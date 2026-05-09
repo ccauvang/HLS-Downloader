@@ -283,7 +283,7 @@
             let initBuf = null;
             if (window._hlsInitUrl) {
                 log('fMP4 — fetching init…', 'inf');
-                initBuf = new Uint8Array(await (await fetch(window._hlsInitUrl)).arrayBuffer());
+                initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl));
                 log(`✔ init: ${formatBytes(initBuf.byteLength, 1)}`, 'ok');
             }
 
@@ -291,7 +291,7 @@
             for (let i = 0; i < links.length; i += BATCH) {
                 const slice = links.slice(i, i + BATCH);
                 const results = await Promise.all(slice.map(async (url, j) => {
-                    let buf = fetchSegmentViaPage(url);
+                    let buf = await fetchSegmentViaPage(url);
                     if (window._hlsHasKey && window._hlsKey) {
                         const iv = window._hlsIv?.byteLength
                             ? window._hlsIv
@@ -314,7 +314,7 @@
                 triggerDownload(new Blob([vOut], { type: 'video/mp4' }), filename.replace('.mp4', '-v.mp4'));
                 log(`✔ Video: ${formatBytes(vLen, 1)}`, 'ok');
                 if (window._hlsAudioInitUrl && window._hlsAudioSegments?.length) {
-                    const aInitBuf = new Uint8Array(await (await fetch(window._hlsAudioInitUrl)).arrayBuffer());
+                    const aInitBuf = new Uint8Array(await fetchSegmentViaPage(url));
                     const aSegs = [];
                     for (let i = 0; i < window._hlsAudioSegments.length; i += 5) {
                         const results = await Promise.all(window._hlsAudioSegments.slice(i, i + 5).map(async url => new Uint8Array(await (await fetchSegmentViaPage(url)).arrayBuffer())));
@@ -339,12 +339,14 @@
                 if (seg.initSegment?.byteLength > 0) mp4Chunks.push(new Uint8Array(seg.initSegment));
                 if (seg.data?.byteLength > 0) mp4Chunks.push(new Uint8Array(seg.data));
             });
+
             let doneHandled = false;
             const remuxTimeout = setTimeout(() => {
                 log('⚠ Timeout — raw TS fallback', 'err');
                 triggerDownload(new Blob([concatBuffers(segmentBuffers)], { type: 'video/mp2t' }), filename.replace('.mp4', '.ts'));
                 segmentBuffers.length = 0; resetUI();
             }, 15000);
+            
             transmuxer.on('done', () => {
                 if (doneHandled) return;
                 const dlEnd = performance.now();
