@@ -1,6 +1,6 @@
 const tabUrls = {};
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'HLS_DETECTED') {
         const tab = sender.tab.id;
         if (!tabUrls[tab]) tabUrls[tab] = [];
@@ -11,9 +11,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
         }
     }
     if (msg.type === 'GET_URLS') {
-        const tab = msg.tabId;
-        return Promise.resolve(tabUrls[tab] || []);
+        sendResponse(tabUrls[msg.tabId] || []);
     }
+    return true;
 });
 
 chrome.tabs.onRemoved.addListener(tabId => delete tabUrls[tabId]);
