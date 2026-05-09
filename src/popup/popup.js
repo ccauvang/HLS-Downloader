@@ -271,8 +271,6 @@
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
         const raw = document.getElementById('links').value.trim();
-        window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false;
-        window._hlsInitUrl = null; window._hlsAudioInitUrl = null; window._hlsAudioSegments = null;
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
 
