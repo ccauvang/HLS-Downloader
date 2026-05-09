@@ -3,6 +3,7 @@
 
     // ── Load detected URLs from background ────────────────────────────────────
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const STATE_KEY = `state_${tab.id}`;
     const detectedM3u8 = await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: tab.id }) || [];
 
     const m3u8Select = document.getElementById('m3u8-select');
@@ -13,7 +14,39 @@
         m3u8Select.innerHTML = '<option value="">— select detected stream —</option>' +
             detectedM3u8.map((u, i) => `<option value="${u}">${i + 1}. ${u.split('/').pop().split('?')[0]}</option>`).join('');
     }
+    document.getElementById('links').addEventListener('input', saveState);
+    document.getElementById('filename').addEventListener('input', saveState);
     updateDropdown();
+    chrome.storage.session.get(STATE_KEY, (s) => {
+        const state = s[STATE_KEY];
+        if (!state) return;
+        if (state.links) document.getElementById('links').value = state.links;
+        if (state.filename) document.getElementById('filename').value = state.filename;
+        if (state.m3u8Url) document.getElementById('m3u8-url').value = state.m3u8Url;
+        if (state.logHtml) logEl.innerHTML = state.logHtml;
+        if (state.dlFormat) {
+            dlFormat = state.dlFormat;
+            btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
+            btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
+        }
+        if (state.detectedM3u8?.length) {
+            detectedM3u8.push(...state.detectedM3u8.filter(u => !detectedM3u8.includes(u)));
+            updateDropdown();
+        }
+    });
+
+    function saveState() {
+        chrome.storage.session.set({
+            [STATE_KEY]: {
+                links: document.getElementById('links').value,
+                filename: document.getElementById('filename').value,
+                m3u8Url: document.getElementById('m3u8-url').value,
+                logHtml: logEl.innerHTML,
+                dlFormat,
+                detectedM3u8
+            }
+        });
+    }
 
     m3u8Select.addEventListener('change', () => {
         if (m3u8Select.value) document.getElementById('m3u8-url').value = m3u8Select.value;
@@ -167,15 +200,18 @@
     btnMp4.addEventListener('click', () => {
         dlFormat = 'mp4';
         btnMp4.className = 'fmt-active'; btnTs.className = 'fmt-inactive';
+        saveState();
     });
     btnTs.addEventListener('click', () => {
         dlFormat = 'ts';
         btnTs.className = 'fmt-active'; btnMp4.className = 'fmt-inactive';
+        saveState();
     });
 
     // ── Log buttons ───────────────────────────────────────────────────────────
     document.getElementById('clear-log-btn').addEventListener('click', () => {
         logEl.innerHTML = '<span class="inf">Ready. Paste links and hit start.</span>';
+        saveState();
     });
     document.getElementById('copy-log-btn').addEventListener('click', () => {
         const text = [...logEl.querySelectorAll('span')].map(s => s.textContent).join('\n');
@@ -261,6 +297,7 @@
                     log(`✔ ${window._hlsAudioSegments.length} audio segs`, 'ok');
                 }
             }
+            saveState();
         } catch (e) { log(`❌ ${e.message}`, 'err'); }
     });
 
@@ -346,7 +383,7 @@
                 triggerDownload(new Blob([concatBuffers(segmentBuffers)], { type: 'video/mp2t' }), filename.replace('.mp4', '.ts'));
                 segmentBuffers.length = 0; resetUI();
             }, 15000);
-            
+
             transmuxer.on('done', () => {
                 if (doneHandled) return;
                 const dlEnd = performance.now();
