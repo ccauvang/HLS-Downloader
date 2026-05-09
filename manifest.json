@@ -17,20 +17,20 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "src/popup/popup.html",
     "default_title": "HLS Downloader"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background/background.js"
   },
-  "options_page": "settings.html",
+  "options_page": "src/settings/settings.html",
   "content_scripts": [
     {
       "matches": [
         "*://*/*"
       ],
       "js": [
-        "content.js"
+        "src/content/content.js"
       ],
       "run_at": "document_start"
     }
