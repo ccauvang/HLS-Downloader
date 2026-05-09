@@ -134,6 +134,32 @@
         walk(0, view.byteLength);
     }
 
+    function fetchSegmentViaPage(url) {
+        return new Promise((resolve, reject) => {
+            const id = Math.random().toString(36).slice(2);
+            const handler = (msg) => {
+                if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
+                chrome.runtime.onMessage.removeListener(handler);
+                msg.error ? reject(new Error(msg.error)) : resolve(new Uint8Array(msg.arr).buffer);
+            };
+            chrome.runtime.onMessage.addListener(handler);
+            chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id });
+        });
+    }
+
+    function fetchViaPage(url) {
+        return new Promise((resolve, reject) => {
+            const id = Math.random().toString(36).slice(2);
+            const handler = (msg) => {
+                if (msg.type !== 'FETCH_M3U8_RESPONSE' || msg.id !== id) return;
+                chrome.runtime.onMessage.removeListener(handler);
+                msg.error ? reject(new Error(msg.error)) : resolve(msg.text);
+            };
+            chrome.runtime.onMessage.addListener(handler);
+            chrome.tabs.sendMessage(tab.id, { type: 'PROXY_FETCH', url, id });
+        });
+    }
+
     // ── Format buttons ────────────────────────────────────────────────────────
     let dlFormat = 'mp4';
     const btnMp4 = document.getElementById('fmt-mp4');
@@ -166,18 +192,6 @@
         if (!url) { log('⚠ No m3u8 URL!', 'err'); return; }
         log('Fetching m3u8…', 'inf');
         try {
-            function fetchViaPage(url) {
-                return new Promise((resolve, reject) => {
-                    const id = Math.random().toString(36).slice(2);
-                    const handler = (e) => {
-                        if (e.data?.type !== 'FETCH_M3U8_RESPONSE' || e.data.id !== id) return;
-                        window.removeEventListener('message', handler);
-                        e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.text);
-                    };
-                    window.addEventListener('message', handler);
-                    chrome.tabs.sendMessage(tab.id, { type: 'PROXY_FETCH', url, id });
-                });
-            }
             let text = await fetchViaPage(url);
             let base = url.substring(0, url.lastIndexOf('/') + 1);
             const masterText = text;
@@ -277,7 +291,7 @@
             for (let i = 0; i < links.length; i += BATCH) {
                 const slice = links.slice(i, i + BATCH);
                 const results = await Promise.all(slice.map(async (url, j) => {
-                    const res = await fetch(url);
+                    const res = await fetchSegmentViaPage(url);
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     let buf = await res.arrayBuffer();
                     if (window._hlsHasKey && window._hlsKey) {
@@ -305,7 +319,7 @@
                     const aInitBuf = new Uint8Array(await (await fetch(window._hlsAudioInitUrl)).arrayBuffer());
                     const aSegs = [];
                     for (let i = 0; i < window._hlsAudioSegments.length; i += 5) {
-                        const results = await Promise.all(window._hlsAudioSegments.slice(i, i + 5).map(async url => new Uint8Array(await (await fetch(url)).arrayBuffer())));
+                        const results = await Promise.all(window._hlsAudioSegments.slice(i, i + 5).map(async url => new Uint8Array(await (await fetchSegmentViaPage(url)).arrayBuffer())));
                         for (const buf of results) aSegs.push(buf);
                         if (_cancelled) { segmentBuffers.length = 0; aSegs.length = 0; resetUI(); return; }
                     }
@@ -322,6 +336,7 @@
             log('Remuxing...', 'inf');
             const mp4Chunks = [];
             const transmuxer = new muxjs.mp4.Transmuxer({ keepOriginalTimestamps: true, baseMediaDecodeTime: 0, remux: true });
+
             transmuxer.on('data', seg => {
                 if (seg.initSegment?.byteLength > 0) mp4Chunks.push(new Uint8Array(seg.initSegment));
                 if (seg.data?.byteLength > 0) mp4Chunks.push(new Uint8Array(seg.data));
