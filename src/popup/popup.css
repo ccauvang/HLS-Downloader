@@ -8,12 +8,12 @@
 
 html,
 body {
-    width: 460px;
+    width: 500px;
     min-height: 500px;
 }
 
 body {
-    width: 460px;
+    width: 500px;
     background: #1A1D1E;
     color: #e0e0e0;
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -44,10 +44,11 @@ body {
 .row {
     display: flex;
     gap: 6px;
+    height: 35px;
 }
 
-select,
-input[type=text] {
+#m3u8-select,
+#m3u8-url, #filename {
     flex: 1;
     background: #141414;
     border: 1px solid #424141;
@@ -60,8 +61,8 @@ input[type=text] {
     width: 100%;
 }
 
-select:focus,
-input[type=text]:focus {
+#m3u8-select:focus,
+#m3u8-url:focus, #filename:focus {
     border-color: #e93434;
 }
 
@@ -71,7 +72,7 @@ select option {
 
 textarea {
     width: 100%;
-    height: 90px;
+    height: 150px;
     background: #141414;
     border: 1px solid #252525;
     border-radius: 7px;
@@ -208,7 +209,7 @@ textarea:focus {
     border: 1px solid #1c1c1c;
     border-radius: 7px;
     padding: 7px 8px;
-    height: 150px;
+    height: 170px;
     overflow-y: auto;
     font-size: 13px;
     color: #888;

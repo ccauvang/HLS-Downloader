@@ -2,10 +2,15 @@
     'use strict';
 
     const _origFetch = window.fetch.bind(window);
+
+    function safeSend(msg) {
+        try { chrome.runtime.sendMessage(msg); } catch (e) { /* context invalidated, ignore */ }
+    }
+
     window.fetch = async function (...args) {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         if (url.includes('.m3u8')) {
-            chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url });
+            safeSend({ type: 'HLS_DETECTED', url });
         }
         return _origFetch(...args);
     };
@@ -13,7 +18,7 @@
     const _origOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url, ...rest) {
         if (typeof url === 'string' && url.includes('.m3u8')) {
-            chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url });
+            safeSend({ type: 'HLS_DETECTED', url });
         }
         return _origOpen.call(this, method, url, ...rest);
     };
@@ -22,9 +27,9 @@
         try {
             const res = await _origFetch(event.data.url);
             const text = await res.text();
-            chrome.runtime.sendMessage({ type: 'FETCH_M3U8_RESPONSE', id: event.data.id, text });
+            safeSend({ type: 'FETCH_M3U8_RESPONSE', id: event.data.id, text });
         } catch (e) {
-            chrome.runtime.sendMessage({ type: 'FETCH_M3U8_RESPONSE', id: event.data.id, error: e.message });
+            safeSend({ type: 'FETCH_M3U8_RESPONSE', id: event.data.id, error: e.message });
         }
     });
 
@@ -38,9 +43,9 @@
             const res = await _origFetch(event.data.url);
             const buf = await res.arrayBuffer();
             const arr = Array.from(new Uint8Array(buf));
-            chrome.runtime.sendMessage({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, arr });
+            safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, arr });
         } catch (e) {
-            chrome.runtime.sendMessage({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, error: e.message });
+            safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, error: e.message });
         }
     });
 

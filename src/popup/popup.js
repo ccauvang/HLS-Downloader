@@ -17,7 +17,7 @@
     loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
 
     // ── Load detected URLs from background ────────────────────────────────────
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: false, windowType: 'normal' });
     const STATE_KEY = `state_${tab.id}`;
     const detectedM3u8 = await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: tab.id }) || [];
 
@@ -270,6 +270,7 @@
 
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
+        const CONCURRENCY = 5;
         const raw = document.getElementById('links').value.trim();
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
@@ -295,35 +296,42 @@
             // ── Load ffmpeg ──────────────────────────────────────────────────
             await loadFFmpeg();
 
+            // ── Handle fMP4 init segment ─────────────────────────────────────
+            if (window._hlsInitUrl) {
+                log('fMP4 — fetching init…', 'inf');
+                const initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl));
+                await ffmpeg.writeFile('init.mp4', initBuf);
+            }
+            if (window._hlsAudioInitUrl) {
+                const aInitBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsAudioInitUrl));
+                await ffmpeg.writeFile('init_a.mp4', aInitBuf);
+            }
+
             log(`${links.length} segments. Downloading…`, 'fire');
 
             // ── Download segments → write to ffmpeg FS ───────────────────────
             const segNames = [];
             const segExt = window._hlsInitUrl ? '.mp4' : '.ts';
-            const BATCH = 3;
-            let absIdx = 0;
-            for (let i = 0; i < links.length; i += BATCH) {
-                if (_cancelled) break;
-                const slice = links.slice(i, i + BATCH);
-                const results = await Promise.all(slice.map(async (url, j) => {
-                    let buf = await fetchSegmentViaPage(url);
-                    if (window._hlsHasKey && window._hlsKey) {
-                        const iv = window._hlsIv?.byteLength
-                            ? window._hlsIv
-                            : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, absIdx + j); return b; })();
-                        buf = await decryptSegment(buf, window._hlsKey, iv);
-                    }
-                    return new Uint8Array(buf);
-                }));
-                absIdx += slice.length;
-                for (let j = 0; j < results.length; j++) {
-                    const name = `seg${String(i + j).padStart(6, '0')}${segExt}`;
-                    await ffmpeg.writeFile(name, results[j]);
-                    segNames.push(name);
+            let done = 0;
+            const vQueue = links.map((url, i) => async () => {
+                if (_cancelled) return;
+                let buf = await fetchSegmentViaPage(url);
+                if (window._hlsHasKey && window._hlsKey) {
+                    const iv = window._hlsIv?.byteLength
+                        ? window._hlsIv
+                        : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i); return b; })();
+                    buf = await decryptSegment(buf, window._hlsKey, iv);
                 }
-                setProgress(Math.min(i + BATCH, links.length), links.length);
-                log(`✔ segs ${i + 1}–${Math.min(i + BATCH, links.length)}/${links.length}`, 'ok');
-            }
+                const name = `seg${String(i).padStart(6, '0')}${segExt}`;
+                await ffmpeg.writeFile(name, new Uint8Array(buf));
+                segNames[i] = name;
+                setProgress(++done, links.length);
+                if (done % 5 === 0 || done === links.length) {
+                    log(`✔ segs ${done - (done % 5 || 5) + 1}–${done}/${links.length}`, 'ok');
+                }
+            });
+            await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (vQueue.length) await vQueue.shift()(); }));
+            log(`✔ ${links.length} segs done`, 'ok');
 
             if (_cancelled) {
                 await writable.abort();
@@ -331,34 +339,25 @@
                 setProgress(0, links.length); resetUI(); return;
             }
 
-            // ── Handle fMP4 init segment ─────────────────────────────────────
-            if (window._hlsInitUrl) {
-                log('fMP4 — fetching init…', 'inf');
-                const initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl));
-                await ffmpeg.writeFile('init.mp4', initBuf);
-            }
-
             // ── Download audio segments → ffmpeg FS ─────────────────────────
             const audioSegNames = [];
             if (window._hlsAudioSegments?.length) {
                 log(`Downloading ${window._hlsAudioSegments.length} audio segs…`, 'inf');
-                if (window._hlsAudioInitUrl) {
-                    const aInitBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsAudioInitUrl));
-                    await ffmpeg.writeFile('init_a.mp4', aInitBuf);
-                }
-                setProgress(0, window._hlsAudioSegments.length);
-                for (let i = 0; i < window._hlsAudioSegments.length; i += BATCH) {
-                    if (_cancelled) break;
-                    const slice = window._hlsAudioSegments.slice(i, i + BATCH);
-                    const results = await Promise.all(slice.map(async url => new Uint8Array(await fetchSegmentViaPage(url))));
-                    for (let j = 0; j < results.length; j++) {
-                        const name = `aseg${String(i + j).padStart(6, '0')}${segExt}`;
-                        await ffmpeg.writeFile(name, results[j]);
-                        audioSegNames.push(name);
+                const audioSegNames2 = [];
+                let aDone = 0;
+                const aQueue = window._hlsAudioSegments.map((url, i) => async () => {
+                    if (_cancelled) return;
+                    const buf = new Uint8Array(await fetchSegmentViaPage(url));
+                    const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
+                    await ffmpeg.writeFile(name, buf);
+                    audioSegNames2[i] = name;
+                    setProgress(++aDone, window._hlsAudioSegments.length);
+                    if (aDone % 5 === 0 || aDone === window._hlsAudioSegments.length) {
+                        log(`✔ audio segs ${aDone - (aDone % 5 || 5) + 1}–${aDone}/${window._hlsAudioSegments.length}`, 'ok');
                     }
-                    setProgress(Math.min(i + BATCH, window._hlsAudioSegments.length), window._hlsAudioSegments.length);
-                    log(`✔ audio ${i + 1}–${Math.min(i + BATCH, window._hlsAudioSegments.length)}/${window._hlsAudioSegments.length}`, 'ok');
-                }
+                });
+                await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (aQueue.length) await aQueue.shift()(); }));
+                audioSegNames.push(...audioSegNames2.filter(Boolean));
             }
 
             if (_cancelled) {
@@ -372,7 +371,7 @@
             if (window._hlsInitUrl) {
                 log('Merging fMP4 fragments…', 'inf');
                 const vParts = [await ffmpeg.readFile('init.mp4')];
-                for (const n of segNames) vParts.push(await ffmpeg.readFile(n));
+                for (const n of segNames.filter(Boolean)) vParts.push(await ffmpeg.readFile(n));
                 const vTotal = vParts.reduce((a, c) => a + c.byteLength, 0);
                 const vMerged = new Uint8Array(vTotal);
                 let off = 0; for (const p of vParts) { vMerged.set(p, off); off += p.byteLength; }
@@ -380,7 +379,7 @@
 
                 if (hasAudio) {
                     const aParts = [await ffmpeg.readFile('init_a.mp4')];
-                    for (const n of audioSegNames) aParts.push(await ffmpeg.readFile(n));
+                    for (const n of audioSegNames.filter(Boolean)) aParts.push(await ffmpeg.readFile(n));
                     const aTotal = aParts.reduce((a, c) => a + c.byteLength, 0);
                     const aMerged = new Uint8Array(aTotal);
                     let aOff = 0; for (const p of aParts) { aMerged.set(p, aOff); aOff += p.byteLength; }
@@ -414,7 +413,7 @@
             try {
                 await ffmpeg.exec(ffArgs);
             } catch (e) {
-                /* try read anyway */
+                log(`⚠ ffmpeg: ${e?.message || String(e)}`, 'err');
             }
 
             log('✔ Remux done. Writing to disk…', 'ok');
@@ -456,7 +455,7 @@
 
         } catch (err) {
             if (err.name === 'AbortError') { log('⚠ Save cancelled', 'err'); }
-            else { log(`❌ ${err.message}`, 'err'); }
+            else { log(`❌ ${err?.message || String(err)}`, 'err'); }
             resetUI();
         }
     });

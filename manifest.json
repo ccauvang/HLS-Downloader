@@ -17,7 +17,6 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "action": {
-    "default_popup": "src/popup/popup.html",
     "default_title": "HLS Downloader"
   },
   "background": {
