@@ -39,6 +39,11 @@
     {
       "matches": [
         "*://*/*"
+      ],
+      "resources": [
+        "lib/ffmpeg.js",
+        "lib/ffmpeg-core.js",
+        "lib/ffmpeg-core.wasm"
       ]
     }
   ],
