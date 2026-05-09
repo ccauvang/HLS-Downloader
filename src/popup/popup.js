@@ -172,7 +172,7 @@
             const handler = (msg) => {
                 if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
                 chrome.runtime.onMessage.removeListener(handler);
-                msg.error ? reject(new Error(msg.error)) : resolve(msg.buf);
+                msg.error ? reject(new Error(msg.error)) : resolve(new Uint8Array(msg.arr).buffer);
             };
             chrome.runtime.onMessage.addListener(handler);
             chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id });
