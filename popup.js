@@ -90,20 +90,20 @@
     }
     function getTsDuration(segments) {
         function readPts(buf, offset) {
-            return ((buf[offset] & 0x0E) * 0x80000000) + (buf[offset+1] * 0x1000000) +
-                ((buf[offset+2] & 0xFE) * 0x8000) + (buf[offset+3] * 0x80) + ((buf[offset+4] & 0xFE) >> 1);
+            return ((buf[offset] & 0x0E) * 0x80000000) + (buf[offset + 1] * 0x1000000) +
+                ((buf[offset + 2] & 0xFE) * 0x8000) + (buf[offset + 3] * 0x80) + ((buf[offset + 4] & 0xFE) >> 1);
         }
         const MAX_PTS = 0x1FFFFFFFF;
         let firstPts = null, prevPts = null, accumulated = 0;
         for (const seg of segments) {
             for (let i = 0; i < seg.byteLength - 188; i += 188) {
                 if (seg[i] !== 0x47) continue;
-                if (!(seg[i+3] & 0x10)) continue;
-                const afLen = (seg[i+3] & 0x20) ? seg[i+4] + 1 : 0;
+                if (!(seg[i + 3] & 0x10)) continue;
+                const afLen = (seg[i + 3] & 0x20) ? seg[i + 4] + 1 : 0;
                 const pesStart = i + 4 + afLen;
                 if (pesStart + 14 >= seg.byteLength) continue;
-                if (seg[pesStart] !== 0 || seg[pesStart+1] !== 0 || seg[pesStart+2] !== 1) continue;
-                if (!(seg[pesStart+7] & 0x80)) continue;
+                if (seg[pesStart] !== 0 || seg[pesStart + 1] !== 0 || seg[pesStart + 2] !== 1) continue;
+                if (!(seg[pesStart + 7] & 0x80)) continue;
                 const pts = readPts(seg, pesStart + 9);
                 if (firstPts === null) { firstPts = pts; prevPts = pts; continue; }
                 accumulated += pts < prevPts - 90000 * 10 ? MAX_PTS - prevPts + pts : pts - prevPts;
@@ -166,7 +166,19 @@
         if (!url) { log('⚠ No m3u8 URL!', 'err'); return; }
         log('Fetching m3u8…', 'inf');
         try {
-            let text = await fetch(url).then(r => r.text());
+            function fetchViaPage(url) {
+                return new Promise((resolve, reject) => {
+                    const id = Math.random().toString(36).slice(2);
+                    const handler = (e) => {
+                        if (e.data?.type !== 'FETCH_M3U8_RESPONSE' || e.data.id !== id) return;
+                        window.removeEventListener('message', handler);
+                        e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.text);
+                    };
+                    window.addEventListener('message', handler);
+                    chrome.tabs.sendMessage(tab.id, { type: 'PROXY_FETCH', url, id });
+                });
+            }
+            let text = await fetchViaPage(url);
             let base = url.substring(0, url.lastIndexOf('/') + 1);
             const masterText = text;
 
@@ -184,7 +196,7 @@
                 if (!bestUrl) { log('❌ No variant stream found', 'err'); return; }
                 const variantUrl = bestUrl.startsWith('http') ? bestUrl : base + bestUrl;
                 log(`✔ Picked variant: ${bestBw}bps`, 'ok');
-                text = await fetch(variantUrl).then(r => r.text());
+                text = await fetchViaPage(variantUrl);
                 base = variantUrl.substring(0, variantUrl.lastIndexOf('/') + 1);
             }
 
@@ -223,7 +235,7 @@
                 const audioUriMatch = audioLine?.match(/URI="([^"]+)"/);
                 if (audioUriMatch) {
                     const audioUrl = audioUriMatch[1].startsWith('http') ? audioUriMatch[1] : url.substring(0, url.lastIndexOf('/') + 1) + audioUriMatch[1];
-                    const audioText = await fetch(audioUrl).then(r => r.text());
+                    const audioText = await fetchViaPage(audioUrl);
                     const aBase = audioUrl.substring(0, audioUrl.lastIndexOf('/') + 1);
                     const aLines = audioText.split('\n').map(l => l.trim());
                     const aMapLine = aLines.find(l => l.startsWith('#EXT-X-MAP'));
@@ -353,7 +365,7 @@
             transmuxer.on('error', err => log(`❌ ${JSON.stringify(err)}`, 'err'));
             for (let i = 0; i < segmentBuffers.length; i++) {
                 try { transmuxer.push(segmentBuffers[i]); }
-                catch (e) { log(`⚠ seg ${i+1} skip: ${e}`, 'err'); }
+                catch (e) { log(`⚠ seg ${i + 1} skip: ${e}`, 'err'); }
             }
             log('✔ Push done', 'ok');
             transmuxer.flush();
