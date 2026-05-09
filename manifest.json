@@ -1,22 +1,17 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "HLS Downloader",
   "version": "2.0",
   "description": "Download HLS streams as MP4 or TS",
   "permissions": [
     "downloads",
-    "scripting",
     "activeTab",
     "storage",
-    "tabs"
-  ],
-  "host_permissions": [
+    "tabs",
     "*://*/*"
   ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
-  },
-  "action": {
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+  "browser_action": {
     "default_popup": "src/popup/popup.html",
     "default_title": "HLS Downloader"
   },
@@ -36,14 +31,7 @@
     }
   ],
   "web_accessible_resources": [
-    {
-      "resources": [
-        "lib/mux.js"
-      ],
-      "matches": [
-        "*://*/*"
-      ]
-    }
+    "lib/mux.js"
   ],
   "icons": {
     "16": "assets/icon16.png",

@@ -172,7 +172,7 @@
             const handler = (msg) => {
                 if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
                 chrome.runtime.onMessage.removeListener(handler);
-                msg.error ? reject(new Error(msg.error)) : resolve(new Uint8Array(msg.arr).buffer);
+                msg.error ? reject(new Error(msg.error)) : resolve(msg.buf);
             };
             chrome.runtime.onMessage.addListener(handler);
             chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id });
@@ -350,10 +350,10 @@
                 triggerDownload(new Blob([vOut], { type: 'video/mp4' }), filename.replace('.mp4', '-v.mp4'));
                 log(`✔ Video: ${formatBytes(vLen, 1)}`, 'ok');
                 if (window._hlsAudioInitUrl && window._hlsAudioSegments?.length) {
-                    const aInitBuf = new Uint8Array(await fetchSegmentViaPage(url));
+                    const aInitBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsAudioInitUrl));
                     const aSegs = [];
                     for (let i = 0; i < window._hlsAudioSegments.length; i += 5) {
-                        const results = await Promise.all(window._hlsAudioSegments.slice(i, i + 5).map(async url => new Uint8Array(await (await fetchSegmentViaPage(url)).arrayBuffer())));
+                        const results = await Promise.all(window._hlsAudioSegments.slice(i, i + 5).map(async url => new Uint8Array(await fetchSegmentViaPage(url))));
                         for (const buf of results) aSegs.push(buf);
                         if (_cancelled) { segmentBuffers.length = 0; aSegs.length = 0; resetUI(); return; }
                     }
@@ -381,7 +381,7 @@
                 log('⚠ Timeout — raw TS fallback', 'err');
                 triggerDownload(new Blob([concatBuffers(segmentBuffers)], { type: 'video/mp2t' }), filename.replace('.mp4', '.ts'));
                 segmentBuffers.length = 0; resetUI();
-            }, 15000);
+            }, 60000);
 
             transmuxer.on('done', () => {
                 if (doneHandled) return;
