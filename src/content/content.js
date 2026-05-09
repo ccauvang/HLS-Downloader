@@ -20,10 +20,7 @@
     window.addEventListener('message', async (event) => {
         if (event.source !== window || event.data?.type !== 'FETCH_M3U8_REQUEST') return;
         try {
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), 30000);
-            const res = await _origFetch(event.data.url, { signal: controller.signal });
-            clearTimeout(t);
+            const res = await _origFetch(event.data.url);
             const text = await res.text();
             chrome.runtime.sendMessage({ type: 'FETCH_M3U8_RESPONSE', id: event.data.id, text });
         } catch (e) {
@@ -34,17 +31,14 @@
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type !== 'PROXY_FETCH') return;
         window.postMessage({ type: 'FETCH_M3U8_REQUEST', url: msg.url, id: msg.id }, '*');
-        return true;
     });
     window.addEventListener('message', async (event) => {
         if (event.source !== window || event.data?.type !== 'FETCH_SEGMENT_REQUEST') return;
         try {
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), 30000);
-            const res = await _origFetch(event.data.url, { signal: controller.signal });
-            clearTimeout(t);
+            const res = await _origFetch(event.data.url);
             const buf = await res.arrayBuffer();
-            chrome.runtime.sendMessage({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, buf }, [buf]);
+            const arr = Array.from(new Uint8Array(buf));
+            chrome.runtime.sendMessage({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, arr });
         } catch (e) {
             chrome.runtime.sendMessage({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, error: e.message });
         }
@@ -53,6 +47,5 @@
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type !== 'PROXY_SEGMENT') return;
         window.postMessage({ type: 'FETCH_SEGMENT_REQUEST', url: msg.url, id: msg.id }, '*');
-        return true;
     });
 })();
