@@ -291,9 +291,7 @@
             for (let i = 0; i < links.length; i += BATCH) {
                 const slice = links.slice(i, i + BATCH);
                 const results = await Promise.all(slice.map(async (url, j) => {
-                    const res = await fetchSegmentViaPage(url);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    let buf = await res.arrayBuffer();
+                    let buf = fetchSegmentViaPage(url);
                     if (window._hlsHasKey && window._hlsKey) {
                         const iv = window._hlsIv?.byteLength
                             ? window._hlsIv
