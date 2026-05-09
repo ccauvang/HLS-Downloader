@@ -16,4 +16,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
 });
 
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === 'loading') {
+        delete tabUrls[tabId];
+        chrome.action.setBadgeText({ text: '', tabId });
+    }
+});
+
 chrome.tabs.onRemoved.addListener(tabId => delete tabUrls[tabId]);

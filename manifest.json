@@ -20,22 +20,23 @@
     "default_popup": "src/popup/popup.html",
     "default_title": "HLS Downloader"
   },
-  "background": { "service_worker": "src/background/background.js" },
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
   "options_page": "src/settings/settings.html",
   "content_scripts": [
     {
       "matches": [
         "*://*/*"
       ],
-      "js": ["src/content/content.js"],
+      "js": [
+        "src/content/content.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "lib/mux.js"
-      ],
       "matches": [
         "*://*/*"
       ]

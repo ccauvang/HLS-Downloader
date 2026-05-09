@@ -119,18 +119,28 @@
         return await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, key, buf);
     }
 
-    function fetchSegmentViaPage(url, timeoutMs = 30000) {
+    function fetchSegmentViaPage(url, timeoutMs = 60000, retries = 3) {
         return new Promise((resolve, reject) => {
-            const id = Math.random().toString(36).slice(2);
-            const timer = setTimeout(() => reject(new Error(`Segment fetch timeout: ${url}`)), timeoutMs);
-            const handler = (msg) => {
-                if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
-                clearTimeout(timer);
-                chrome.runtime.onMessage.removeListener(handler);
-                msg.error ? reject(new Error(msg.error)) : resolve(new Uint8Array(msg.arr).buffer);
+            const attempt = (n) => {
+                const id = Math.random().toString(36).slice(2);
+                const timer = setTimeout(() => {
+                    chrome.runtime.onMessage.removeListener(handler);
+                    if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
+                    else reject(new Error(`Segment fetch timeout: ${url}`));
+                }, timeoutMs);
+                const handler = (msg) => {
+                    if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
+                    clearTimeout(timer);
+                    chrome.runtime.onMessage.removeListener(handler);
+                    if (msg.error) {
+                        if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
+                        else reject(new Error(msg.error));
+                    } else resolve(new Uint8Array(msg.arr).buffer);
+                };
+                chrome.runtime.onMessage.addListener(handler);
+                chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id }, () => { });
             };
-            chrome.runtime.onMessage.addListener(handler);
-            chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id }, () => { });
+            attempt(retries);
         });
     }
 
@@ -261,6 +271,8 @@
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
         const raw = document.getElementById('links').value.trim();
+        window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false;
+        window._hlsInitUrl = null; window._hlsAudioInitUrl = null; window._hlsAudioSegments = null;
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
 
@@ -291,6 +303,7 @@
             const segNames = [];
             const segExt = window._hlsInitUrl ? '.mp4' : '.ts';
             const BATCH = 3;
+            let absIdx = 0;
             for (let i = 0; i < links.length; i += BATCH) {
                 if (_cancelled) break;
                 const slice = links.slice(i, i + BATCH);
@@ -299,11 +312,12 @@
                     if (window._hlsHasKey && window._hlsKey) {
                         const iv = window._hlsIv?.byteLength
                             ? window._hlsIv
-                            : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + j); return b; })();
+                            : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, absIdx + j); return b; })();
                         buf = await decryptSegment(buf, window._hlsKey, iv);
                     }
                     return new Uint8Array(buf);
                 }));
+                absIdx += slice.length;
                 for (let j = 0; j < results.length; j++) {
                     const name = `seg${String(i + j).padStart(6, '0')}${segExt}`;
                     await ffmpeg.writeFile(name, results[j]);
