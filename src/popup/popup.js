@@ -16,6 +16,18 @@
     }
     document.getElementById('links').addEventListener('input', saveState);
     document.getElementById('filename').addEventListener('input', saveState);
+    function saveState() {
+        chrome.storage.session.set({
+            [STATE_KEY]: {
+                links: document.getElementById('links').value,
+                filename: document.getElementById('filename').value,
+                m3u8Url: document.getElementById('m3u8-url').value,
+                logHtml: logEl.innerHTML,
+                dlFormat,
+                detectedM3u8
+            }
+        });
+    }
     updateDropdown();
     chrome.storage.session.get(STATE_KEY, (s) => {
         const state = s[STATE_KEY];
@@ -34,19 +46,6 @@
             updateDropdown();
         }
     });
-
-    function saveState() {
-        chrome.storage.session.set({
-            [STATE_KEY]: {
-                links: document.getElementById('links').value,
-                filename: document.getElementById('filename').value,
-                m3u8Url: document.getElementById('m3u8-url').value,
-                logHtml: logEl.innerHTML,
-                dlFormat,
-                detectedM3u8
-            }
-        });
-    }
 
     m3u8Select.addEventListener('change', () => {
         if (m3u8Select.value) document.getElementById('m3u8-url').value = m3u8Select.value;
