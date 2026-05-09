@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <link rel="stylesheet" href="popup.css"/>
+</head>
+<body>
+  <div id="header">
+    <span id="header-title">HLS DOWNLOADER</span>
+  </div>
+  <div id="body">
+    <div>
+      <div id="detected-label">Detected streams (0)</div>
+      <div class="row" style="margin-top:4px">
+        <select id="m3u8-select">
+          <option value="">— no streams detected yet —</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <input type="text" id="m3u8-url" placeholder="or paste m3u8 URL…" />
+        <button id="parse-btn">⬇</button>
+      </div>
+    </div>
+    <textarea id="links" placeholder="Segment URLs, one per line..."></textarea>
+    <input type="text" id="filename" value="video.mp4" placeholder="Output filename" />
+    <div class="row">
+      <button id="fmt-mp4" class="fmt-active">MP4</button>
+      <button id="fmt-ts" class="fmt-inactive">TS</button>
+    </div>
+    <div id="bar-wrap-container">
+      <div id="bar-wrap"><div id="bar"></div></div>
+      <span id="bar-percent">0%</span>
+    </div>
+    <div class="row">
+      <button id="start-btn">▶ START DOWNLOAD</button>
+      <button id="cancel-btn" disabled>✕</button>
+    </div>
+    <div id="log"><span class="inf">Ready. Paste links and hit start.</span></div>
+    <div class="row">
+      <button id="clear-log-btn">✕ Clear</button>
+      <button id="copy-log-btn">⎘ Copy Log</button>
+    </div>
+  </div>
+  <script src="lib/mux.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

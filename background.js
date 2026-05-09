@@ -1,0 +1,19 @@
+const tabUrls = {};
+
+chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (msg.type === 'HLS_DETECTED') {
+        const tab = sender.tab.id;
+        if (!tabUrls[tab]) tabUrls[tab] = [];
+        if (!tabUrls[tab].includes(msg.url)) {
+            tabUrls[tab].push(msg.url);
+            chrome.action.setBadgeText({ text: String(tabUrls[tab].length), tabId: tab });
+            chrome.action.setBadgeBackgroundColor({ color: '#e93434', tabId: tab });
+        }
+    }
+    if (msg.type === 'GET_URLS') {
+        const tab = msg.tabId;
+        return Promise.resolve(tabUrls[tab] || []);
+    }
+});
+
+chrome.tabs.onRemoved.addListener(tabId => delete tabUrls[tabId]);
