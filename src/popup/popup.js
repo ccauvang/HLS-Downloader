@@ -413,7 +413,7 @@
             try {
                 await ffmpeg.exec(ffArgs);
             } catch (e) {
-                log(`⚠ ffmpeg: ${e?.message || String(e)}`, 'err');
+                // log(`⚠ ffmpeg: ${e?.message || String(e)}`, 'err');
             }
 
             log('✔ Remux done. Writing to disk…', 'ok');

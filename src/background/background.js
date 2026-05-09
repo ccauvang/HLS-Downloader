@@ -9,11 +9,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             chrome.action.setBadgeText({ text: String(tabUrls[tab].length), tabId: tab });
             chrome.action.setBadgeBackgroundColor({ color: '#e93434', tabId: tab });
         }
+        return;
     }
     if (msg.type === 'GET_URLS') {
         sendResponse(tabUrls[msg.tabId] || []);
+        return true;
     }
-    return true;
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -25,7 +26,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.action.onClicked.addListener((tab) => {
     chrome.windows.create({
-        url:  chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`,
+        url: chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`,
         type: 'popup',
         width: 520,
         height: 750
