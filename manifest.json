@@ -22,7 +22,6 @@
   "background": {
     "service_worker": "src/background/background.js"
   },
-  "options_page": "src/settings/settings.html",
   "content_scripts": [
     {
       "matches": [
@@ -42,7 +41,13 @@
       "resources": [
         "lib/ffmpeg.js",
         "lib/ffmpeg-core.js",
-        "lib/ffmpeg-core.wasm"
+        "lib/ffmpeg-core.wasm",
+        "src/history/history.html",
+        "src/history/history.css",
+        "src/history/history.js",
+        "src/settings/settings.html",
+        "src/settings/settings.css",
+        "src/settings/settings.js"
       ]
     }
   ],

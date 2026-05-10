@@ -1,0 +1,169 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap');
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    width: 100%;
+    min-height: 700px;
+    background: #1A1D1E;
+    color: #e0e0e0;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+#header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    background: #3d0000;
+    border-bottom: 1px solid #222;
+}
+
+#header-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #e93434;
+    letter-spacing: 1px;
+}
+
+#header-sub {
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+}
+
+#header-btns {
+    margin-left: auto;
+}
+
+#clear-all-btn {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    background: #3d0000;
+    border: 1px solid #e93434;
+    border-radius: 6px;
+    color: #e93434;
+    font-size: 12px;
+    padding: 6px 12px;
+    cursor: pointer;
+    z-index: 99;
+}
+
+#clear-all-btn:hover {
+    background: #e93434;
+    color: #f2f0ed;
+}
+
+#body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#search {
+    width: 100%;
+    background: #141414;
+    border: 1px solid #424141;
+    border-radius: 7px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 8px 10px;
+    outline: none;
+    font-family: 'Inter', sans-serif;
+}
+
+#search:focus {
+    border-color: #e93434;
+}
+
+#count {
+    font-size: 11px;
+    color: #555;
+}
+
+#list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#empty {
+    font-size: 13px;
+    color: #444;
+    text-align: center;
+    padding: 40px 0;
+    display: none;
+}
+
+.entry {
+    background: #141414;
+    border: 1px solid #252525;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+}
+
+.entry:hover {
+    border-color: #333;
+}
+
+.entry-filename {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e0e0e0;
+    font-family: 'JetBrains Mono', monospace;
+    padding-right: 24px;
+}
+
+.entry-info {
+    font-size: 11px;
+    color: #3DAD66;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.entry-url {
+    font-size: 11px;
+    color: #3191f8;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: fit-content;
+    display: block;
+}
+
+.entry-url:hover {
+    text-decoration: underline;
+}
+
+.entry-time {
+    font-size: 10px;
+    color: #444;
+}
+
+.entry-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: #444;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+.entry-delete:hover {
+    color: #e93434;
+    background: #1f0000;
+}

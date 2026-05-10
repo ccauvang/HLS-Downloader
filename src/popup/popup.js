@@ -17,6 +17,36 @@
     });
     loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
 
+    // ── Preload history & settings assets ────────────────────────────────────
+    let historyBodyHTML = null;
+    let settingsBodyHTML = null;
+    let historyScriptLoaded = false;
+    let settingsScriptLoaded = false;
+
+    (async () => {
+        const [histRes, setRes] = await Promise.all([
+            fetch(chrome.runtime.getURL('src/history/history.html')),
+            fetch(chrome.runtime.getURL('src/settings/settings.html'))
+        ]);
+        const [histHtml, setHtml] = await Promise.all([histRes.text(), setRes.text()]);
+        const parser = new DOMParser();
+        historyBodyHTML = parser.parseFromString(histHtml, 'text/html').getElementById('body').innerHTML;
+        settingsBodyHTML = parser.parseFromString(setHtml, 'text/html').getElementById('body').innerHTML;
+
+        // inject CSS once
+        for (const [id, href] of [
+            ['history-css', 'src/history/history.css'],
+            ['settings-css', 'src/settings/settings.css']
+        ]) {
+            if (!document.getElementById(id)) {
+                const link = document.createElement('link');
+                link.id = id; link.rel = 'stylesheet';
+                link.href = chrome.runtime.getURL(href);
+                document.head.appendChild(link);
+            }
+        }
+    })();
+
     // ── Load detected URLs from background ────────────────────────────────────
     const params = new URLSearchParams(window.location.search);
     const tab = await chrome.tabs.get(parseInt(params.get('tabId')));
@@ -106,6 +136,13 @@
     let totalDuration = 0;
     let _cancelled = false;
 
+    async function saveHistory(entry) {
+        const { history = {} } = await chrome.storage.local.get('history');
+        const id = Math.random().toString(36).slice(2, 10);
+        history[id] = entry;
+        await chrome.storage.local.set({ history });
+    }
+
     function log(msg, cls = '') {
         const span = document.createElement('span');
         if (cls) span.className = cls;
@@ -113,17 +150,20 @@
         logEl.appendChild(span);
         logEl.scrollTop = logEl.scrollHeight;
     }
+
     function setProgress(v, total) {
         const pct = ((v / total) * 100).toFixed(1);
         barEl.style.width = pct + '%';
         percentEl.textContent = pct + '%';
     }
+
     function formatBytes(bytes, decimals = 2) {
         if (bytes === 0) return '0 Bytes';
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(1024));
         return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(decimals))} ${sizes[i]}`;
     }
+
     function formatDuration(seconds) {
         const d = Math.floor(seconds / 86400);
         const h = Math.floor((seconds % 86400) / 3600);
@@ -155,6 +195,7 @@
         const url = keyUri.startsWith('http') ? keyUri : new URL(keyUri, baseUrl).href;
         return await (await fetch(url)).arrayBuffer();
     }
+
     async function decryptSegment(buf, keyBuf, iv) {
         const key = await crypto.subtle.importKey('raw', keyBuf, 'AES-CBC', false, ['decrypt']);
         return await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, key, buf);
@@ -204,8 +245,53 @@
     document.getElementById('reload-btn').addEventListener('click', () => {
         chrome.tabs.reload(tab.id);
     });
+
+    // ── View switching ────────────────────────────────────────────────────────
+    const mainBody = document.getElementById('body');
+
+    function showView(view) {
+        // hide main body content
+        [...mainBody.children].forEach(el => el.style.display = view === 'main' ? '' : 'none');
+
+        // remove old injected view
+        document.getElementById('injected-view')?.remove();
+
+        if (view === 'main') return;
+
+        const div = document.createElement('div');
+        div.id = 'injected-view';
+        div.innerHTML = view === 'history' ? historyBodyHTML : settingsBodyHTML;
+        mainBody.appendChild(div);
+    }
+
+    document.getElementById('home-btn').addEventListener('click', () => showView('main'));
+
+    document.getElementById('history-btn').addEventListener('click', () => {
+        if (!historyBodyHTML) return;
+        showView('history');
+        if (!historyScriptLoaded) {
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('src/history/history.js');
+            script.onload = () => window.hlsHistoryLoad?.(); // wait for script then load
+            document.body.appendChild(script);
+            historyScriptLoaded = true;
+        } else {
+            window.hlsHistoryLoad?.();
+        }
+    });
+
     document.getElementById('settings-btn').addEventListener('click', () => {
-        chrome.runtime.openOptionsPage();
+        if (!settingsBodyHTML) return;
+        showView('settings');
+        if (!settingsScriptLoaded) {
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('src/settings/settings.js');
+            script.onload = () => window.hlsSettingsInit?.();
+            document.body.appendChild(script);
+            settingsScriptLoaded = true;
+        } else {
+            window.hlsSettingsInit?.();
+        }
     });
 
     // ── Format buttons ────────────────────────────────────────────────────────
@@ -479,6 +565,12 @@
                 log(`⏱ Write to disk done in: ${formatDuration(Math.ceil((writeToDiskEnd - writeToDiskStart) / 1000))}`, 'fire');
                 log(`⏱ Total download time: ${formatDuration(Math.ceil((performance.now() - dlStart) / 1000))}`, 'fire');
                 log(`✔ Saved → "${fileHandle.name}" (${formatBytes(totalBytes)})`, 'ok');
+                await saveHistory({
+                    filename: fileHandle.name,
+                    infoFile: `${formatBytes(totalBytes)} | ${dlFormat.toUpperCase()} | ${links.length} segs`,
+                    siteUrl: tab.url,
+                    timestamp: new Date().toISOString()
+                });
                 saveState();
             } else {
                 // MP4 or fMP4 = need ffmpeg
@@ -509,6 +601,12 @@
                 log(`⏱ Write to disk done in: ${formatDuration(Math.ceil((writeToDiskEnd - writeToDiskStart) / 1000))}`, 'fire');
                 log(`⏱ Total download time: ${formatDuration(Math.ceil((performance.now() - dlStart) / 1000))}`, 'fire');
                 log(`✔ Saved → "${fileHandle.name}" (${formatBytes(outData.byteLength ?? outData.length)})`, 'ok');
+                await saveHistory({
+                    filename: fileHandle.name,
+                    infoFile: `${formatBytes(outData.byteLength ?? outData.length)} | ${dlFormat.toUpperCase()} | ${links.length} segs`,
+                    siteUrl: tab.url,
+                    timestamp: new Date().toISOString()
+                });
                 saveState();
             }
 

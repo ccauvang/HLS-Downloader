@@ -8,12 +8,11 @@
 
 html,
 body {
-    width: 500px;
-    min-height: 500px;
+    min-height: 700px;
 }
 
 body {
-    width: 500px;
+    width: 100%;
     background: #1A1D1E;
     color: #e0e0e0;
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -47,25 +46,27 @@ body {
     gap: 6px;
 }
 
-#reload-btn,
-#settings-btn {
-    background: transparent;
-    border: 1px solid #5a0000;
+#home-btn,
+#settings-btn,
+#history-btn {
+    background: #5a0000;
+    border: 1px solid #e93434;
     border-radius: 5px;
-    color: #e93434;
+    color: #f2f0ed;
     font-size: 15px;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-#reload-btn:hover,
-#settings-btn:hover {
-    background: #5a0000;
-    color: #ff6b6b;
+#home-btn:hover,
+#settings-btn:hover,
+#history-btn:hover {
+    background: #e93434;
+    color: #f2f0ed;
 }
 
 .row {
@@ -142,6 +143,22 @@ textarea:focus {
     color: #f2f0ed;
     font-weight: bold;
     cursor: pointer;
+}
+
+#reload-btn {
+    background: #3d0000;
+    color: #e93434;
+    cursor: pointer;
+    border: 1px solid #e93434;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#reload-btn:hover {
+    background: #e93434;
+    color: #f2f0ed;
 }
 
 #parse-btn {
