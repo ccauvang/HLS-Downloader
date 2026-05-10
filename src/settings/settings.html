@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>HLS Downloader — Settings</title>
+    <link rel="stylesheet" href="settings.css" />
+</head>
+
+<body>
+    <div id="header">
+        <span id="header-title">HLS DOWNLOADER</span>
+        <span id="header-sub">Settings</span>
+    </div>
+    <div id="body">
+
+        <div class="setting-group">
+            <label class="setting-label">Default Filename</label>
+            <p class="setting-desc">Output filename used when download starts (without extension)</p>
+            <input type="text" id="default-filename" placeholder="video" />
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Concurrency (Batch Size)</label>
+            <p class="setting-desc">How many segments download at the same time</p>
+            <div id="batch-options">
+                <button class="batch-btn" data-val="3">3</button>
+                <button class="batch-btn" data-val="4">4</button>
+                <button class="batch-btn" data-val="5">5</button>
+                <button class="batch-btn" data-val="6">6</button>
+                <button class="batch-btn" data-val="7">7</button>
+                <button class="batch-btn" data-val="8">8</button>
+                <button class="batch-btn" data-val="9">9</button>
+            </div>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Default Format</label>
+            <p class="setting-desc">Format selected by default when popup opens</p>
+            <div class="row">
+                <button id="fmt-mp4" class="fmt-active">MP4</button>
+                <button id="fmt-ts" class="fmt-inactive">TS</button>
+            </div>
+        </div>
+
+        <button id="save-btn">✔ Save Settings</button>
+        <div id="saved-msg">Settings saved!</div>
+    </div>
+    <script src="settings.js"></script>
+</body>
+
+</html>

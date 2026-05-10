@@ -2,7 +2,7 @@
     'use strict';
 
     const { FFmpeg } = FFmpegWASM;
-    const ffmpeg = new FFmpeg();
+    let ffmpeg = new FFmpeg();
 
     async function loadFFmpeg() {
         if (ffmpeg.loaded) return;
@@ -12,17 +12,25 @@
         });
     }
     ffmpeg.on('log', ({ type, message }) => {
-        if (type === 'error' && message?.trim()) log(message, 'err');
+        if (type === 'stderr' && message?.trim()) log(message, 'err');
     });
     loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
 
     // ── Load detected URLs from background ────────────────────────────────────
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: false, windowType: 'normal' });
+    const params = new URLSearchParams(window.location.search);
+    const tab = await chrome.tabs.get(parseInt(params.get('tabId')));
     const STATE_KEY = `state_${tab.id}`;
     const detectedM3u8 = await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: tab.id }) || [];
 
     const m3u8Select = document.getElementById('m3u8-select');
     const detectedLabel = document.getElementById('detected-label');
+
+    const logEl = document.getElementById('log');
+    const barEl = document.getElementById('bar');
+    const percentEl = document.getElementById('bar-percent');
+    const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    let dlFormat = 'mp4';
 
     function updateDropdown() {
         detectedLabel.textContent = `Detected streams (${detectedM3u8.length})`;
@@ -31,6 +39,7 @@
     }
     document.getElementById('links').addEventListener('input', saveState);
     document.getElementById('filename').addEventListener('input', saveState);
+
 
     function saveState() {
         chrome.storage.session.set({
@@ -45,10 +54,18 @@
         });
     }
 
+    const { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat } = await new Promise(r =>
+        chrome.storage.sync.get({ filename: 'video', concurrency: 5, format: 'mp4' }, r)
+    );
+
+
     updateDropdown();
     chrome.storage.session.get(STATE_KEY, (s) => {
         const state = s[STATE_KEY];
-        if (!state) return;
+        if (!state) {
+            document.getElementById('filename').value = defaultFilename; // ← add this
+            return;
+        }
         if (state.links) document.getElementById('links').value = state.links;
         if (state.filename) document.getElementById('filename').value = state.filename;
         if (state.m3u8Url) document.getElementById('m3u8-url').value = state.m3u8Url;
@@ -69,11 +86,6 @@
     });
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    const logEl = document.getElementById('log');
-    const barEl = document.getElementById('bar');
-    const percentEl = document.getElementById('bar-percent');
-    const startBtn = document.getElementById('start-btn');
-    const cancelBtn = document.getElementById('cancel-btn');
     let totalDuration = 0;
     let _cancelled = false;
 
@@ -159,18 +171,34 @@
         });
     }
 
+    // ── Reload and Settings ────────────────────────────────────────────────────────
+    document.getElementById('reload-btn').addEventListener('click', () => {
+        chrome.tabs.reload(tab.id);
+    });
+    document.getElementById('settings-btn').addEventListener('click', () => {
+        chrome.runtime.openOptionsPage();
+    });
+
     // ── Format buttons ────────────────────────────────────────────────────────
-    let dlFormat = 'mp4';
+    dlFormat = defaultFormat;
+
     const btnMp4 = document.getElementById('fmt-mp4');
     const btnTs = document.getElementById('fmt-ts');
+
+    // set initial style from settings
+    btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
+    btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
+
     btnMp4.addEventListener('click', () => {
         dlFormat = 'mp4';
-        btnMp4.className = 'fmt-active'; btnTs.className = 'fmt-inactive';
+        btnMp4.className = 'fmt-active';
+        btnTs.className = 'fmt-inactive';
         saveState();
     });
     btnTs.addEventListener('click', () => {
         dlFormat = 'ts';
-        btnTs.className = 'fmt-active'; btnMp4.className = 'fmt-inactive';
+        btnTs.className = 'fmt-active';
+        btnMp4.className = 'fmt-inactive';
         saveState();
     });
 
@@ -270,13 +298,14 @@
 
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
-        const CONCURRENCY = 5;
+        const CONCURRENCY = CONCURRENCY_SETTING;
         const raw = document.getElementById('links').value.trim();
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
 
+        // load settings
+
         const filename = document.getElementById('filename').value.trim() || 'video.mp4';
-        const dlStart = performance.now();
         startBtn.disabled = true; _cancelled = false; cancelBtn.disabled = false;
         log('─────────────────────', 'fire');
         barEl.style.width = '0%'; percentEl.textContent = '0%';
@@ -307,6 +336,7 @@
                 await ffmpeg.writeFile('init_a.mp4', aInitBuf);
             }
 
+            const dlStart = performance.now();
             log(`${links.length} segments. Downloading…`, 'fire');
 
             // ── Download segments → write to ffmpeg FS ───────────────────────
@@ -319,15 +349,15 @@
                 if (window._hlsHasKey && window._hlsKey) {
                     const iv = window._hlsIv?.byteLength
                         ? window._hlsIv
-                        : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i); return b; })();
+                        : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + 1); return b; })();
                     buf = await decryptSegment(buf, window._hlsKey, iv);
                 }
                 const name = `seg${String(i).padStart(6, '0')}${segExt}`;
                 await ffmpeg.writeFile(name, new Uint8Array(buf));
                 segNames[i] = name;
                 setProgress(++done, links.length);
-                if (done % 5 === 0 || done === links.length) {
-                    log(`✔ segs ${done - (done % 5 || 5) + 1}–${done}/${links.length}`, 'ok');
+                if (done % CONCURRENCY === 0 || done === links.length) {
+                    log(`✔ segs ${done - (done % CONCURRENCY || CONCURRENCY) + 1}–${done}/${links.length}`, 'ok');
                 }
             });
             await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (vQueue.length) await vQueue.shift()(); }));
@@ -352,13 +382,17 @@
                     await ffmpeg.writeFile(name, buf);
                     audioSegNames2[i] = name;
                     setProgress(++aDone, window._hlsAudioSegments.length);
-                    if (aDone % 5 === 0 || aDone === window._hlsAudioSegments.length) {
-                        log(`✔ audio segs ${aDone - (aDone % 5 || 5) + 1}–${aDone}/${window._hlsAudioSegments.length}`, 'ok');
+                    if (aDone % CONCURRENCY === 0 || aDone === window._hlsAudioSegments.length) {
+                        log(`✔ audio segs ${aDone - (aDone % CONCURRENCY || CONCURRENCY) + 1}–${aDone}/${window._hlsAudioSegments.length}`, 'ok');
                     }
                 });
                 await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (aQueue.length) await aQueue.shift()(); }));
                 audioSegNames.push(...audioSegNames2.filter(Boolean));
             }
+
+            // ── Download done ────────────────────────────────────
+            const dlEnd = performance.now();
+            log(`⏱ Download segments done in: ${formatDuration(Math.ceil((dlEnd - dlStart) / 1000))}`, 'fire');
 
             if (_cancelled) {
                 await writable.abort();
@@ -394,56 +428,68 @@
                 }
             }
 
-            // ── Remux with ffmpeg ────────────────────────────────────────────
-            log('Remuxing with ffmpeg…', 'inf');
+            // ── Remux / concat ───────────────────────────────────────────────────────
+            const remuxStart = performance.now();
             const outName = dlFormat === 'ts' ? 'output.ts' : 'output.mp4';
 
-            const ffArgs = window._hlsInitUrl
-                ? hasAudio
-                    ? ['-i', 'video_merged.mp4', '-i', 'audio_merged.mp4',
-                        '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
-                    : ['-i', 'video_merged.mp4', '-c', 'copy', outName]
-                : hasAudio
-                    ? ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt',
-                        '-f', 'concat', '-safe', '0', '-i', 'concat_a.txt',
-                        '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
-                    : ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt',
-                        '-c', 'copy', outName];
+            if (dlFormat === 'ts' && !window._hlsInitUrl) {
+                // TS = raw concat in JS, skip ffmpeg entirely
+                log('Writing TS to disk…', 'inf');
+                const writeToDiskStart = performance.now();
+                let totalBytes = 0;
+                for (const n of segNames.filter(Boolean)) {
+                    const chunk = await ffmpeg.readFile(n);
+                    await writable.write(chunk);
+                    totalBytes += chunk.byteLength;
+                }
+                // ── Stream output to disk ────────────────────────────────────────
+                await writable.close();
+                const remuxEnd = performance.now();
+                const writeToDiskEnd = remuxEnd;
+                log(`⏱ Write to disk done in: ${formatDuration(Math.ceil((writeToDiskEnd - writeToDiskStart) / 1000))}`, 'fire');
+                log(`⏱ Total download time: ${formatDuration(Math.ceil((performance.now() - dlStart) / 1000))}`, 'fire');
+                log(`✔ Saved → "${fileHandle.name}" (${formatBytes(totalBytes)})`, 'ok');
+                saveState();
+            } else {
+                // MP4 or fMP4 = need ffmpeg
+                log('Remuxing with ffmpeg…', 'inf');
+                const ffArgs = window._hlsInitUrl
+                    ? hasAudio
+                        ? ['-i', 'video_merged.mp4', '-i', 'audio_merged.mp4', '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
+                        : ['-i', 'video_merged.mp4', '-c', 'copy', outName]
+                    : hasAudio
+                        ? ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-f', 'concat', '-safe', '0', '-i', 'concat_a.txt', '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
+                        : ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-c', 'copy', outName];
+                try { await ffmpeg.exec(ffArgs); } catch (e) { }
+                const remuxEnd = performance.now();
+                log(`⏱ Remux done in: ${formatDuration(Math.ceil((remuxEnd - remuxStart) / 1000))}`, 'fire');
 
-            try {
-                await ffmpeg.exec(ffArgs);
-            } catch (e) {
-                // log(`⚠ ffmpeg: ${e?.message || String(e)}`, 'err');
+                // ── Stream output to disk ────────────────────────────────────────
+                const writeToDiskStart = performance.now();
+                log('✔ Remux done. Writing to disk…', 'ok');
+                let outData;
+                try { outData = await ffmpeg.readFile(outName); } catch (e) {
+                    await new Promise(r => setTimeout(r, 800));
+                    outData = await ffmpeg.readFile(outName);
+                }
+                if (!outData || (outData.byteLength ?? outData.length) === 0) throw new Error('ffmpeg output empty');
+                await writable.write(outData instanceof Uint8Array ? outData : new Uint8Array(outData));
+                await writable.close();
+                const writeToDiskEnd = performance.now();
+                log(`⏱ Write to disk done in: ${formatDuration(Math.ceil((writeToDiskEnd - writeToDiskStart) / 1000))}`, 'fire');
+                log(`⏱ Total download time: ${formatDuration(Math.ceil((performance.now() - dlStart) / 1000))}`, 'fire');
+                log(`✔ Saved → "${fileHandle.name}" (${formatBytes(outData.byteLength ?? outData.length)})`, 'ok');
+                saveState();
             }
-
-            log('✔ Remux done. Writing to disk…', 'ok');
-
-            // ── Stream output to disk ────────────────────────────────────────
-            let outData;
-            try {
-                outData = await ffmpeg.readFile(outName);
-            } catch (e) {
-                await new Promise(r => setTimeout(r, 800));
-                outData = await ffmpeg.readFile(outName);
-            }
-            if (!outData || (outData.byteLength ?? outData.length) === 0) {
-                throw new Error('ffmpeg output empty');
-            }
-
-            await writable.write(outData instanceof Uint8Array ? outData : new Uint8Array(outData));
-            await writable.close();
-
-            const dlEnd = performance.now();
-            log(`⏱ Download in: ${formatDuration(Math.ceil((dlEnd - dlStart) / 1000))}`, 'fire');
-            log(`✔ Saved → "${fileHandle.name}" (${formatBytes(outData.byteLength ?? outData.length)})`, 'ok');
-            saveState();
 
             // ── Cleanup ffmpeg FS ────────────────────────────────────────────
             for (const n of [...segNames, ...audioSegNames]) await ffmpeg.deleteFile(n).catch(() => { });
-            await ffmpeg.deleteFile('concat_v.txt').catch(() => { });
-            await ffmpeg.deleteFile('concat_a.txt').catch(() => { });
+            if (!(dlFormat === 'ts' && !window._hlsInitUrl)) {
+                await ffmpeg.deleteFile('concat_v.txt').catch(() => { });
+                await ffmpeg.deleteFile('concat_a.txt').catch(() => { });
+                await ffmpeg.deleteFile(outName).catch(() => { });
+            }
             if (window._hlsAudioInitUrl) await ffmpeg.deleteFile('init_a.mp4').catch(() => { });
-            await ffmpeg.deleteFile(outName).catch(() => { });
             if (window._hlsInitUrl) {
                 await ffmpeg.deleteFile('init.mp4').catch(() => { });
                 await ffmpeg.deleteFile('video_merged.mp4').catch(() => { });
@@ -451,15 +497,28 @@
             }
 
             setProgress(1, 1);
+            try { ffmpeg.terminate(); } catch (e) { }
+            ffmpeg = new FFmpeg();
+            ffmpeg.on('log', ({ type, message }) => {
+                if (type === 'stderr' && message?.trim()) log(message, 'err');
+            });
             resetUI();
 
         } catch (err) {
             if (err.name === 'AbortError') { log('⚠ Save cancelled', 'err'); }
             else { log(`❌ ${err?.message || String(err)}`, 'err'); }
+            saveState();
+            setProgress(1, 1);
+            try { ffmpeg.terminate(); } catch (e) { }
+            ffmpeg = new FFmpeg();
+            ffmpeg.on('log', ({ type, message }) => {
+                if (type === 'stderr' && message?.trim()) log(message, 'err');
+            });
             resetUI();
         }
     });
 
+    // ── Cancel Download ────────────────────────────────────────────
     cancelBtn.addEventListener('click', () => {
         if (!_cancelled) { _cancelled = true; log('⚠ Cancelled', 'err'); resetUI(); }
     });

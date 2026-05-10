@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-  <meta charset="utf-8"/>
-  <link rel="stylesheet" href="popup.css"/>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
 </head>
+
 <body>
   <div id="header">
     <span id="header-title">HLS DOWNLOADER</span>
+    <div id="header-btns">
+      <button id="reload-btn" title="Reload page">↺</button>
+      <button id="settings-btn" title="Settings">⚙</button>
+    </div>
   </div>
   <div id="body">
     <div>
@@ -28,7 +34,9 @@
       <button id="fmt-ts" class="fmt-inactive">TS</button>
     </div>
     <div id="bar-wrap-container">
-      <div id="bar-wrap"><div id="bar"></div></div>
+      <div id="bar-wrap">
+        <div id="bar"></div>
+      </div>
       <span id="bar-percent">0%</span>
     </div>
     <div class="row">
@@ -44,4 +52,5 @@
   <script src="../../lib/ffmpeg.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>

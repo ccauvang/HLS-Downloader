@@ -27,6 +27,13 @@ body {
     border-bottom: 1px solid #222;
 }
 
+#body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
 #header-title {
     font-size: 18px;
     font-weight: bold;
@@ -34,11 +41,31 @@ body {
     letter-spacing: 1px;
 }
 
-#body {
-    padding: 12px;
+#header-btns {
+    margin-left: auto;
     display: flex;
-    flex-direction: column;
-    gap: 9px;
+    gap: 6px;
+}
+
+#reload-btn,
+#settings-btn {
+    background: transparent;
+    border: 1px solid #5a0000;
+    border-radius: 5px;
+    color: #e93434;
+    font-size: 15px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#reload-btn:hover,
+#settings-btn:hover {
+    background: #5a0000;
+    color: #ff6b6b;
 }
 
 .row {
@@ -48,7 +75,8 @@ body {
 }
 
 #m3u8-select,
-#m3u8-url, #filename {
+#m3u8-url,
+#filename {
     flex: 1;
     background: #141414;
     border: 1px solid #424141;
@@ -62,7 +90,8 @@ body {
 }
 
 #m3u8-select:focus,
-#m3u8-url:focus, #filename:focus {
+#m3u8-url:focus,
+#filename:focus {
     border-color: #e93434;
 }
 
