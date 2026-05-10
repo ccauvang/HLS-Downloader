@@ -11,8 +11,9 @@
             wasmURL: chrome.runtime.getURL('lib/ffmpeg-core.wasm'),
         });
     }
+
     ffmpeg.on('log', ({ type, message }) => {
-        if (type === 'stderr' && message?.trim()) log(message, 'err');
+        if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'inf');
     });
     loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
 
@@ -54,16 +55,32 @@
         });
     }
 
-    const { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat } = await new Promise(r =>
+    let { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat } = await new Promise(r =>
         chrome.storage.sync.get({ filename: 'video', concurrency: 5, format: 'mp4' }, r)
     );
 
+    document.getElementById('first-log').textContent =
+        `Ready. Concurrency: ${CONCURRENCY_SETTING} | On: ${new URL(tab.url).hostname}\nTab ID: ${tab.id} | v2.0`;
+
+    chrome.runtime.onMessage.addListener((msg) => {
+        if (msg.type !== 'SETTINGS_UPDATED') return;
+        const { concurrency, format } = msg.changes;
+        if (concurrency) CONCURRENCY_SETTING = concurrency.newValue;
+        if (format) {
+            dlFormat = format.newValue;
+            btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
+            btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
+        }
+
+        document.getElementById('first-log').textContent =
+            `Ready. Concurrency: ${CONCURRENCY_SETTING} | On: ${new URL(tab.url).hostname}\nTab ID: ${tab.id} | v2.0`;
+    });
 
     updateDropdown();
     chrome.storage.session.get(STATE_KEY, (s) => {
         const state = s[STATE_KEY];
         if (!state) {
-            document.getElementById('filename').value = defaultFilename; // ← add this
+            document.getElementById('filename').value = defaultFilename;
             return;
         }
         if (state.links) document.getElementById('links').value = state.links;
@@ -117,6 +134,18 @@
         if (m > 0) return `${m}m ${s}s`;
         return `${s}s`;
     }
+
+    function shouldLogFfmpeg(msg) {
+        const m = msg.trim();
+        const suppress = [
+            'frame=', 'built with', 'configuration:', 'lib',
+            'Stream mapping', 'Stream #', 'Input #', 'Output #',
+            'Duration', 'Metadata', 'encoder', 'Error closing file',
+            '  '
+        ];
+        return !suppress.some(s => m.startsWith(s));
+    }
+
     function resetUI() {
         startBtn.disabled = false;
         cancelBtn.disabled = true;
@@ -204,9 +233,10 @@
 
     // ── Log buttons ───────────────────────────────────────────────────────────
     document.getElementById('clear-log-btn').addEventListener('click', () => {
-        logEl.innerHTML = '<span class="inf">Ready. Paste links and hit start.</span>';
+        logEl.innerHTML = `<span class="inf">Ready. Concurrency: ${CONCURRENCY_SETTING} | On: ${new URL(tab.url).hostname}\nTab ID: ${tab.id} | v2.0</span>`
         saveState();
     });
+
     document.getElementById('copy-log-btn').addEventListener('click', () => {
         const text = [...logEl.querySelectorAll('span')].map(s => s.textContent).join('\n');
         navigator.clipboard.writeText(text).then(() => {
@@ -500,7 +530,7 @@
             try { ffmpeg.terminate(); } catch (e) { }
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ type, message }) => {
-                if (type === 'stderr' && message?.trim()) log(message, 'err');
+                if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'inf');
             });
             resetUI();
 
@@ -512,7 +542,7 @@
             try { ffmpeg.terminate(); } catch (e) { }
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ type, message }) => {
-                if (type === 'stderr' && message?.trim()) log(message, 'err');
+                if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'err');
             });
             resetUI();
         }

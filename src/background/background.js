@@ -17,6 +17,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', changes });
+});
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') {
         delete tabUrls[tabId];
@@ -29,7 +34,7 @@ chrome.action.onClicked.addListener((tab) => {
         url: chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`,
         type: 'popup',
         width: 520,
-        height: 750
+        height: 780
     });
 });
 
