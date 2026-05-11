@@ -424,7 +424,6 @@
 
         // check cache first
         const cached = detectedM3u8.find(e => typeof e === 'object' && e.url === url);
-        const masterText = cached?.cachedText || null;
         const masterBase = url.substring(0, url.lastIndexOf('/') + 1);
         let text, base, masterText;
 

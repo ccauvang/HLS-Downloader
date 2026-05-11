@@ -7,6 +7,15 @@
         try { chrome.runtime.sendMessage(msg); } catch (e) { }
     }
 
+    function scanVideoTags() {
+        document.querySelectorAll('video, source').forEach(el => {
+            const src = el.src || el.getAttribute('src') || '';
+            if (src && src.startsWith('http')) {
+                safeSend({ type: 'HLS_DETECTED', url: src });
+            }
+        });
+    }
+
     window.fetch = async function (...args) {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         if (url.includes('.m3u8')) {
@@ -91,4 +100,26 @@
         if (msg.type !== 'PROXY_SEGMENT') return;
         window.postMessage({ type: 'FETCH_SEGMENT_REQUEST', url: msg.url, id: msg.id }, '*');
     });
+
+    const _observer = new MutationObserver((mutations) => {
+        for (const mut of mutations) {
+            for (const node of mut.addedNodes) {
+                if (node.nodeType !== 1) continue;
+                const src = node.src || node.getAttribute?.('src') || '';
+                if (src && src.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: src });
+                node.querySelectorAll?.('video, source').forEach(el => {
+                    const s = el.src || el.getAttribute('src') || '';
+                    if (s && s.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: s });
+                });
+            }
+        }
+    });
+
+    _observer.observe(document.documentElement, { childList: true, subtree: true });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scanVideoTags);
+    } else {
+        scanVideoTags();
+    }
 })();
