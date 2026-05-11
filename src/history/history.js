@@ -76,7 +76,7 @@ async function load() {
                 clearBtn.textContent = '⚠ Click again to confirm';
                 setTimeout(() => {
                     clearBtn.dataset.confirm = '';
-                    clearBtn.textContent = '🗑';
+                    clearBtn.textContent = '🗑 Clear All';
                 }, 3000);
                 return;
             }

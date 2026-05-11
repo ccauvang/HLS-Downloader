@@ -8,7 +8,9 @@
     "scripting",
     "activeTab",
     "storage",
-    "tabs"
+    "tabs",
+    "webRequest",
+    "alarms"
   ],
   "host_permissions": [
     "*://*/*"

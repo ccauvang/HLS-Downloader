@@ -52,25 +52,58 @@
     const tab = await chrome.tabs.get(parseInt(params.get('tabId')));
     const STATE_KEY = `state_${tab.id}`;
     const detectedM3u8 = await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: tab.id }) || [];
-
-    const m3u8Select = document.getElementById('m3u8-select');
+    const m3u8SelectEl = document.getElementById('m3u8-select');
+    const m3u8Selected = document.getElementById('m3u8-selected');
+    const m3u8Options = document.getElementById('m3u8-options');
     const detectedLabel = document.getElementById('detected-label');
-
     const logEl = document.getElementById('log');
     const barEl = document.getElementById('bar');
     const percentEl = document.getElementById('bar-percent');
     const startBtn = document.getElementById('start-btn');
     const cancelBtn = document.getElementById('cancel-btn');
+    const btnMp4 = document.getElementById('fmt-mp4');
+    const btnTs = document.getElementById('fmt-ts');
+    let m3u8Value = '';
     let dlFormat = 'mp4';
 
     function updateDropdown() {
         detectedLabel.textContent = `Detected streams (${detectedM3u8.length})`;
-        m3u8Select.innerHTML = '<option value="">— select detected stream —</option>' +
-            detectedM3u8.map((u, i) => `<option value="${u}">${i + 1}. ${u.split('/').pop().split('?')[0]}</option>`).join('');
+        m3u8Options.innerHTML = '';
+
+        if (!detectedM3u8.length) {
+            m3u8Selected.textContent = '— no streams detected yet —';
+            m3u8Value = '';
+            return;
+        }
+
+        detectedM3u8.forEach((entry, i) => {
+            const url = typeof entry === 'string' ? entry : entry.url;
+            const label = typeof entry === 'string' ? '' : ` — ${entry.label}`;
+            const shortUrl = url.length > 35 ? url.slice(0, 35) + '...' : url;
+            const opt = document.createElement('div');
+            opt.className = 'custom-option';
+            opt.textContent = `${i + 1}. ${shortUrl}${label}`;
+            opt.title = url;
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                m3u8Value = url;
+                m3u8Selected.textContent = opt.textContent;
+                document.getElementById('m3u8-url').value = url;
+                m3u8Options.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                m3u8SelectEl.classList.remove('open');
+            });
+            m3u8Options.appendChild(opt);
+        });
     }
+
     document.getElementById('links').addEventListener('input', saveState);
     document.getElementById('filename').addEventListener('input', saveState);
 
+    chrome.runtime.sendMessage({ type: 'SET_ACTIVE_TAB', tabId: tab.id });
+    window.addEventListener('unload', () => {
+        chrome.runtime.sendMessage({ type: 'UNSET_ACTIVE_TAB', tabId: tab.id });
+    });
 
     function saveState() {
         chrome.storage.session.set({
@@ -107,6 +140,21 @@
     });
 
     updateDropdown();
+
+    chrome.runtime.onMessage.addListener((msg) => {
+        if (msg.type !== 'HLS_DETECTED') return;
+        if (msg.tabId !== tab.id) return;
+        if (detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === msg.url)) return;
+        // verify via page context before showing
+        detectStreamInfo(msg.url).then(info => {
+            if (!info) return;
+            if (!detectedM3u8.find(e => e.url === info.url)) {
+                detectedM3u8.push(info);
+                updateDropdown();
+            }
+        }).catch(() => { });
+    });
+
     chrome.storage.session.get(STATE_KEY, (s) => {
         const state = s[STATE_KEY];
         if (!state) {
@@ -122,14 +170,10 @@
             btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
         }
-        if (state.detectedM3u8?.length) {
-            detectedM3u8.push(...state.detectedM3u8.filter(u => !detectedM3u8.includes(u)));
-            updateDropdown();
-        }
-    });
-
-    m3u8Select.addEventListener('change', () => {
-        if (m3u8Select.value) document.getElementById('m3u8-url').value = m3u8Select.value;
+        detectedM3u8.push(...state.detectedM3u8.filter(e => {
+            const url = typeof e === 'string' ? e : e.url;
+            return !detectedM3u8.find(x => (typeof x === 'string' ? x : x.url) === url);
+        }));
     });
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -181,6 +225,7 @@
             'frame=', 'built with', 'configuration:', 'lib',
             'Stream mapping', 'Stream #', 'Input #', 'Output #',
             'Duration', 'Metadata', 'encoder', 'Error closing file',
+            '[mp4', '[mov', '[matroska', 'Non-monotonous',
             '  '
         ];
         return !suppress.some(s => m.startsWith(s));
@@ -241,10 +286,66 @@
         });
     }
 
-    // ── Reload and Settings ────────────────────────────────────────────────────────
-    document.getElementById('reload-btn').addEventListener('click', () => {
-        chrome.tabs.reload(tab.id);
-    });
+    async function detectStreamInfo(url) {
+        const text = await fetchViaPage(url);
+        if (!text.trimStart().startsWith('#EXTM3U')) return null;
+
+        const lines = text.split('\n').map(l => l.trim());
+        const isMaster = lines.some(l => l.startsWith('#EXT-X-STREAM-INF'));
+
+        if (isMaster) {
+            let bestBw = -1, bestUrl = null;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith('#EXT-X-STREAM-INF')) {
+                    const bwMatch = lines[i].match(/BANDWIDTH=(\d+)/);
+                    const bw = bwMatch ? parseInt(bwMatch[1]) : 0;
+                    const vLine = lines[i + 1]?.trim();
+                    if (vLine && !vLine.startsWith('#') && bw > bestBw) {
+                        bestBw = bw; bestUrl = vLine;
+                    }
+                }
+            }
+            if (bestUrl) {
+                const base = url.substring(0, url.lastIndexOf('/') + 1);
+                const variantUrl = bestUrl.startsWith('http') ? bestUrl : base + bestUrl;
+                try {
+                    const variantText = await fetchViaPage(variantUrl);
+                    const info = parseMediaPlaylist(variantText);
+                    return {
+                        url, isMaster: true,
+                        label: `${formatDuration(Math.ceil(info.duration))} | ${info.segments} segs | master`,
+                        cachedText: text,
+                        variantUrl,
+                        cachedVariantText: variantText
+                    };
+                } catch (e) {
+                    return { url, isMaster: true, label: 'Master playlist', cachedText: text, variantUrl: null, cachedVariantText: null };
+                }
+            }
+            return { url, isMaster: true, label: 'Master playlist', cachedText: text, variantUrl: null, cachedVariantText: null };
+        }
+
+        const info = parseMediaPlaylist(text);
+        return {
+            url, isMaster: false,
+            label: `${formatDuration(Math.ceil(info.duration))} | ${info.segments} segs`,
+            cachedText: text,
+            variantUrl: null,
+            cachedVariantText: null
+        };
+    }
+
+    function parseMediaPlaylist(text) {
+        const lines = text.split('\n');
+        let duration = 0, segments = 0;
+        for (const l of lines) {
+            if (l.trimStart().startsWith('#EXTINF:')) {
+                duration += parseFloat(l.trim().slice(8).split(',')[0]) || 0;
+                segments++;
+            }
+        }
+        return { duration, segments };
+    }
 
     // ── View switching ────────────────────────────────────────────────────────
     const mainBody = document.getElementById('body');
@@ -252,6 +353,11 @@
     function showView(view) {
         // hide main body content
         [...mainBody.children].forEach(el => el.style.display = view === 'main' ? '' : 'none');
+
+        // update active btn
+        document.getElementById('home-btn').classList.toggle('active', view === 'main');
+        document.getElementById('history-btn').classList.toggle('active', view === 'history');
+        document.getElementById('settings-btn').classList.toggle('active', view === 'settings');
 
         // remove old injected view
         document.getElementById('injected-view')?.remove();
@@ -263,6 +369,8 @@
         div.innerHTML = view === 'history' ? historyBodyHTML : settingsBodyHTML;
         mainBody.appendChild(div);
     }
+
+    document.getElementById('home-btn').classList.add('active');
 
     document.getElementById('home-btn').addEventListener('click', () => showView('main'));
 
@@ -294,71 +402,54 @@
         }
     });
 
-    // ── Format buttons ────────────────────────────────────────────────────────
-    dlFormat = defaultFormat;
-
-    const btnMp4 = document.getElementById('fmt-mp4');
-    const btnTs = document.getElementById('fmt-ts');
-
-    // set initial style from settings
-    btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
-    btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
-
-    btnMp4.addEventListener('click', () => {
-        dlFormat = 'mp4';
-        btnMp4.className = 'fmt-active';
-        btnTs.className = 'fmt-inactive';
-        saveState();
-    });
-    btnTs.addEventListener('click', () => {
-        dlFormat = 'ts';
-        btnTs.className = 'fmt-active';
-        btnMp4.className = 'fmt-inactive';
-        saveState();
+    // ── Dropdown and Reload───────────────────────────────────────────────────────────
+    m3u8SelectEl.addEventListener('click', () => {
+        m3u8SelectEl.classList.toggle('open');
     });
 
-    // ── Log buttons ───────────────────────────────────────────────────────────
-    document.getElementById('clear-log-btn').addEventListener('click', () => {
-        logEl.innerHTML = `<span class="inf">Ready. Concurrency: ${CONCURRENCY_SETTING} | On: ${new URL(tab.url).hostname}\nTab ID: ${tab.id} | v2.0</span>`
-        saveState();
+    document.addEventListener('click', (e) => {
+        if (!m3u8SelectEl.contains(e.target)) m3u8SelectEl.classList.remove('open');
     });
 
-    document.getElementById('copy-log-btn').addEventListener('click', () => {
-        const text = [...logEl.querySelectorAll('span')].map(s => s.textContent).join('\n');
-        navigator.clipboard.writeText(text).then(() => {
-            const btn = document.getElementById('copy-log-btn');
-            btn.textContent = '✔ Copied!';
-            setTimeout(() => btn.textContent = '⎘ Copy Log', 2000);
-        });
+    document.getElementById('reload-btn').addEventListener('click', () => {
+        chrome.tabs.reload(tab.id);
+        detectedM3u8.length = 0;
+        updateDropdown();
     });
 
     // ── Parse ─────────────────────────────────────────────────────────────────
     document.getElementById('parse-btn').addEventListener('click', async () => {
         const url = document.getElementById('m3u8-url').value.trim();
         if (!url) { log('⚠ No m3u8 URL!', 'err'); return; }
+
+        // check cache first
+        const cached = detectedM3u8.find(e => typeof e === 'object' && e.url === url);
+        const masterText = cached?.cachedText || null;
+        const masterBase = url.substring(0, url.lastIndexOf('/') + 1);
+        let text, base, masterText;
+
         log('Fetching m3u8…', 'inf');
         try {
-            const masterBase = url.substring(0, url.lastIndexOf('/') + 1);
-            let text = await fetchViaPage(url);
-            let base = url.substring(0, url.lastIndexOf('/') + 1);
-            const masterText = text;
 
-            if (text.includes('#EXT-X-STREAM-INF')) {
-                const lines2 = text.split('\n');
-                let bestBw = -1, bestUrl = null;
-                for (let i = 0; i < lines2.length; i++) {
-                    if (lines2[i].startsWith('#EXT-X-STREAM-INF')) {
-                        const bwMatch = lines2[i].match(/BANDWIDTH=(\d+)/);
-                        const bw = bwMatch ? parseInt(bwMatch[1]) : 0;
-                        const vLine = lines2[i + 1]?.trim();
-                        if (vLine && !vLine.startsWith('#') && bw > bestBw) { bestBw = bw; bestUrl = vLine; }
-                    }
+            if (cached?.cachedText) {
+                log('✔ Using cached playlist', 'ok');
+                text = cached.cachedText;
+                base = url.substring(0, url.lastIndexOf('/') + 1);
+
+                // if master and has cached variant
+                if (cached.isMaster && cached.cachedVariantText) {
+                    log('✔ Using cached variant', 'ok');
+                    text = cached.cachedVariantText;
+                    base = cached.variantUrl.substring(0, cached.variantUrl.lastIndexOf('/') + 1);
+                } else if (cached.isMaster && !cached.cachedVariantText) {
+                    // master but no variant cached, fetch normally
+                    text = await fetchViaPage(url);
+                    base = masterBase;
                 }
-                if (!bestUrl) { log('❌ No variant stream found', 'err'); return; }
-                const variantUrl = bestUrl.startsWith('http') ? bestUrl : base + bestUrl;
-                log(`✔ Picked variant: ${bestBw}bps`, 'ok');
-                text = await fetchViaPage(variantUrl);
-                base = variantUrl.substring(0, variantUrl.lastIndexOf('/') + 1);
+            } else {
+                text = await fetchViaPage(url);
+                base = masterBase;
+                masterText = text;
             }
 
             const lines = text.split('\n').map(l => l.trim());
@@ -412,14 +503,46 @@
         } catch (e) { log(`❌ ${e.message}`, 'err'); }
     });
 
+    // ── Log buttons ───────────────────────────────────────────────────────────
+    document.getElementById('clear-log-btn').addEventListener('click', () => {
+        logEl.innerHTML = `<span class="inf">Ready. Concurrency: ${CONCURRENCY_SETTING} | On: ${new URL(tab.url).hostname}\nTab ID: ${tab.id} | v2.0</span>`
+        saveState();
+    });
+
+    document.getElementById('copy-log-btn').addEventListener('click', () => {
+        const text = [...logEl.querySelectorAll('span')].map(s => s.textContent).join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = '✔ Copied!';
+            setTimeout(() => btn.textContent = '⎘ Copy Log', 2000);
+        });
+    });
+
+    // ── Format buttons ────────────────────────────────────────────────────────
+    dlFormat = defaultFormat;
+
+    // set initial style from settings
+    btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
+    btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
+
+    btnMp4.addEventListener('click', () => {
+        dlFormat = 'mp4';
+        btnMp4.className = 'fmt-active';
+        btnTs.className = 'fmt-inactive';
+        saveState();
+    });
+    btnTs.addEventListener('click', () => {
+        dlFormat = 'ts';
+        btnTs.className = 'fmt-active';
+        btnMp4.className = 'fmt-inactive';
+        saveState();
+    });
+
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
         const CONCURRENCY = CONCURRENCY_SETTING;
         const raw = document.getElementById('links').value.trim();
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
-
-        // load settings
 
         const filename = document.getElementById('filename').value.trim() || 'video.mp4';
         startBtn.disabled = true; _cancelled = false; cancelBtn.disabled = false;

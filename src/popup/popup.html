@@ -19,9 +19,10 @@
     <div>
       <div id="detected-label">Detected streams (0)</div>
       <div class="row" style="margin-top:4px">
-        <select id="m3u8-select">
-          <option value="">— no streams detected yet —</option>
-        </select>
+        <div id="m3u8-select" class="custom-select">
+          <div id="m3u8-selected">— no streams detected yet —</div>
+          <div id="m3u8-options" class="custom-options"></div>
+        </div>
         <button id="reload-btn" title="Reload page">↺ Reload Page</button>
       </div>
       <div class="row" style="margin-top:6px">
@@ -46,7 +47,7 @@
       <button id="cancel-btn" disabled>✕</button>
     </div>
     <div id="log"><span id="first-log" class="inf">Ready. Paste links and hit start.</span></div>
-    <div class="row" , style="margin-top: 8px;">
+    <div class="row" style="margin-top: 8px;">
       <button id="clear-log-btn">✕ Clear</button>
       <button id="copy-log-btn">⎘ Copy Log</button>
     </div>

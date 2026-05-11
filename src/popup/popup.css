@@ -62,9 +62,12 @@ body {
     justify-content: center;
 }
 
-#home-btn:hover,
-#settings-btn:hover,
-#history-btn:hover {
+#home-btn.active,
+#settings-btn.active,
+#history-btn.active,
+#home-btn.active:hover,
+#settings-btn.active:hover,
+#history-btn.active:hover {
     background: #e93434;
     color: #f2f0ed;
 }
@@ -75,7 +78,6 @@ body {
     height: 35px;
 }
 
-#m3u8-select,
 #m3u8-url,
 #filename {
     flex: 1;
@@ -90,14 +92,97 @@ body {
     width: 100%;
 }
 
-#m3u8-select:focus,
 #m3u8-url:focus,
 #filename:focus {
     border-color: #e93434;
 }
 
-select option {
+.custom-select {
+    flex: 1;
+    position: relative;
     background: #141414;
+    border: 1px solid #424141;
+    border-radius: 7px;
+    color: #ccc;
+    font-size: 11.5px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.custom-select.open {
+    border-color: #e93434;
+    border-radius: 7px 7px 0 0;
+}
+
+#m3u8-selected {
+    padding: 7px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    height: 35px;
+    display: flex;
+    align-items: center;
+}
+
+#m3u8-selected::after {
+    content: '▾';
+    margin-left: auto;
+    padding-left: 6px;
+    color: #555;
+    flex-shrink: 0;
+}
+
+.custom-options {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: -1px;
+    right: -1px;
+    background: #141414;
+    border: 1px solid #e93434;
+    border-top: none;
+    border-radius: 0 0 7px 7px;
+    z-index: 999;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.custom-select.open .custom-options {
+    display: block;
+}
+
+.custom-option {
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: #ccc;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid #1e1e1e;
+}
+
+.custom-option:last-child {
+    border-bottom: none;
+}
+
+.custom-option:hover {
+    background: #1f1f1f;
+    color: #e93434;
+}
+
+.custom-option.selected {
+    color: #e93434;
+    background: #1a0000;
+}
+
+.custom-options::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-options::-webkit-scrollbar-thumb {
+    background: #e93434;
+    border-radius: 2px;
 }
 
 textarea {
@@ -118,9 +203,24 @@ textarea:focus {
     border-color: #e93434;
 }
 
+#links::-webkit-scrollbar {
+    width: 8px;
+}
+
+#links::-webkit-scrollbar-thumb {
+    background: #e93434;
+    border-radius: 2px;
+    cursor: default;
+}
+
+#links::-webkit-scrollbar-corner {
+    background: #2cff76;
+}
+
+
 #detected-label {
-    font-size: 11px;
-    color: #555;
+    font-size: 15px;
+    color: #3191f8;
 }
 
 .fmt-active {
