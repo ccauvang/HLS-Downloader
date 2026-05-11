@@ -11,7 +11,9 @@ function addUrl(tab, url) {
         tabUrls[tab].push(url);
         chrome.action.setBadgeText({ text: String(tabUrls[tab].length), tabId: tab });
         chrome.action.setBadgeBackgroundColor({ color: '#e93434', tabId: tab });
-        chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, tabId: tab }).catch(() => { });
+        if (activePopupTabs.size > 0) {
+            chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, tabId: tab }).catch(() => { });
+        }
     }
 }
 
@@ -50,6 +52,9 @@ chrome.webRequest.onHeadersReceived.addListener(
             return;
         }
 
+        if (ct.includes('javascript') || ct.includes('css') ||
+            ct.includes('image/') || ct.includes('font/') ||
+            ct.includes('application/json')) return;
 
         const size = parseInt(details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length')?.value || '0');
         if (ct.includes('text/plain') || ct.includes('octet-stream')) {

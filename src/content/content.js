@@ -105,8 +105,12 @@
         for (const mut of mutations) {
             for (const node of mut.addedNodes) {
                 if (node.nodeType !== 1) continue;
-                const src = node.src || node.getAttribute?.('src') || '';
-                if (src && src.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: src });
+                const tag = node.tagName?.toLowerCase();
+                if (tag === 'video' || tag === 'source') {
+                    const src = node.src || node.getAttribute('src') || '';
+                    if (src && src.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: src });
+                }
+                // check children
                 node.querySelectorAll?.('video, source').forEach(el => {
                     const s = el.src || el.getAttribute('src') || '';
                     if (s && s.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: s });
