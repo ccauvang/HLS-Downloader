@@ -170,10 +170,13 @@
             btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
         }
-        detectedM3u8.push(...state.detectedM3u8.filter(e => {
-            const url = typeof e === 'string' ? e : e.url;
-            return !detectedM3u8.find(x => (typeof x === 'string' ? x : x.url) === url);
-        }));
+        if (state.detectedM3u8?.length) {
+            detectedM3u8.push(...state.detectedM3u8.filter(e => {
+                const url = typeof e === 'string' ? e : e.url;
+                return !detectedM3u8.find(x => (typeof x === 'string' ? x : x.url) === url);
+            }));
+            updateDropdown();
+        }
     });
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -265,7 +268,9 @@
                     } else resolve(new Uint8Array(msg.arr).buffer);
                 };
                 chrome.runtime.onMessage.addListener(handler);
-                chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id }, () => { });
+                chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id }, () => {
+                    if (chrome.runtime.lastError) return;
+                });
             };
             attempt(retries);
         });
@@ -282,7 +287,9 @@
                 msg.error ? reject(new Error(msg.error)) : resolve(msg.text);
             };
             chrome.runtime.onMessage.addListener(handler);
-            chrome.tabs.sendMessage(tab.id, { type: 'PROXY_FETCH', url, id }, () => { });
+            chrome.tabs.sendMessage(tab.id, { type: 'PROXY_FETCH', url, id }, () => {
+                if (chrome.runtime.lastError) return;
+            });
         });
     }
 
@@ -434,6 +441,7 @@
                 log('✔ Using cached playlist', 'ok');
                 text = cached.cachedText;
                 base = url.substring(0, url.lastIndexOf('/') + 1);
+                if (cached.isMaster) masterText = cached.cachedText;
 
                 // if master and has cached variant
                 if (cached.isMaster && cached.cachedVariantText) {
@@ -510,6 +518,7 @@
 
     document.getElementById('copy-log-btn').addEventListener('click', () => {
         const text = [...logEl.querySelectorAll('span')].map(s => s.textContent).join('\n');
+        const btn = document.getElementById('copy-log-btn');
         navigator.clipboard.writeText(text).then(() => {
             btn.textContent = '✔ Copied!';
             setTimeout(() => btn.textContent = '⎘ Copy Log', 2000);
