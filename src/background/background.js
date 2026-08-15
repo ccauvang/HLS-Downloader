@@ -3,6 +3,7 @@ chrome.alarms.onAlarm.addListener(() => { });
 
 const tabUrls = {};
 const activePopupTabs = new Set();
+const keyCache = new Map();
 
 function addUrl(tab, url) {
     if (tab < 0) return;
@@ -56,6 +57,8 @@ chrome.webRequest.onHeadersReceived.addListener(
             ct.includes('image/') || ct.includes('font/') ||
             ct.includes('application/json')) return;
 
+        if (details.url.includes('hls-key')) return;
+
         const size = parseInt(details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length')?.value || '0');
         if (ct.includes('text/plain') || ct.includes('octet-stream')) {
             if (!looksLikeSegment(details.url) && (size === 0 || size < 500000)) {
@@ -84,6 +87,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         activePopupTabs.delete(msg.tabId);
         return;
     }
+    if (msg.type === 'HLS_KEY_CACHE_SET') {
+        keyCache.set(msg.url, msg.bytes);
+        return;
+    }
+    if (msg.type === 'GET_CACHED_KEY') {
+        sendResponse(keyCache.get(msg.url) || null);
+        return true;
+    }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -95,6 +106,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') {
         delete tabUrls[tabId];
         chrome.action.setBadgeText({ text: '', tabId });
+        keyCache.clear();
     }
 });
 

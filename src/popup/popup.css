@@ -8,11 +8,8 @@
 
 html,
 body {
-    min-height: 700px;
-}
-
-body {
     width: 100%;
+    min-height: 700px;
     background: #1A1D1E;
     color: #e0e0e0;
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;

@@ -241,7 +241,9 @@
 
     async function fetchKey(keyUri, baseUrl) {
         const url = keyUri.startsWith('http') ? keyUri : new URL(keyUri, baseUrl).href;
-        return await (await fetch(url)).arrayBuffer();
+        const bytes = await chrome.runtime.sendMessage({ type: 'GET_CACHED_KEY', url });
+        if (!bytes) throw new Error('Key not cached — reload page and retry before key expires');
+        return new Uint8Array(bytes).buffer;
     }
 
     async function decryptSegment(buf, keyBuf, iv) {

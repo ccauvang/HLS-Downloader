@@ -16,6 +16,11 @@
         });
     }
 
+    window.addEventListener('message', (event) => {
+        if (event.source !== window || event.data?.type !== 'HLS_KEY_CAPTURED') return;
+        chrome.runtime.sendMessage({ type: 'HLS_KEY_CACHE_SET', url: event.data.url, bytes: event.data.bytes });
+    });
+
     window.fetch = async function (...args) {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         if (url.includes('.m3u8')) {
@@ -84,6 +89,7 @@
         if (msg.type !== 'PROXY_FETCH') return;
         window.postMessage({ type: 'FETCH_M3U8_REQUEST', url: msg.url, id: msg.id }, '*');
     });
+
     window.addEventListener('message', async (event) => {
         if (event.source !== window || event.data?.type !== 'FETCH_SEGMENT_REQUEST') return;
         try {
