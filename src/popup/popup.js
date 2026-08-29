@@ -181,6 +181,7 @@
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     let totalDuration = 0;
+    let bytesDownloaded = 0;
     let _cancelled = false;
 
     async function saveHistory(entry) {
@@ -198,10 +199,20 @@
         logEl.scrollTop = logEl.scrollHeight;
     }
 
-    function setProgress(v, total) {
+    function setProgress(v, total, startTime, bytesDone) {
         const pct = ((v / total) * 100).toFixed(1);
         barEl.style.width = pct + '%';
         percentEl.textContent = pct + '%';
+        if (startTime && v > 0) {
+            const elapsed = (performance.now() - startTime) / 1000;
+            const rate = v / elapsed;
+            const remaining = (total - v) / rate;
+            const bytesPerSec = bytesDone / elapsed;
+            document.getElementById('bar-eta').textContent =
+                `↓ ${formatBytes(bytesPerSec)}/s · ${formatDuration(Math.ceil(remaining))}`;
+        } else {
+            document.getElementById('bar-eta').textContent = '';
+        }
     }
 
     function formatBytes(bytes, decimals = 2) {
@@ -466,10 +477,17 @@
             const segments = [];
             const mapLine = lines.find(l => l.startsWith('#EXT-X-MAP'));
             if (mapLine) {
-                const mapUri = mapLine.match(/URI="([^"]+)"/)[1];
-                window._hlsInitUrl = mapUri.startsWith('http') ? mapUri : base + mapUri;
-                log(`✔ fMP4 mode`, 'ok');
-            } else { window._hlsInitUrl = null; }
+                const mapMatch = mapLine.match(/URI="([^"]+)"/);
+                if (!mapMatch) {
+                    log('⚠ Malformed EXT-X-MAP line', 'err');
+                    window._hlsInitUrl = null;
+                } else {
+                    window._hlsInitUrl = mapMatch[1].startsWith('http') ? mapMatch[1] : base + mapMatch[1];
+                    log(`✔ fMP4 mode`, 'ok');
+                }
+            } else {
+                window._hlsInitUrl = null;
+            }
 
             for (let i = 0; i < lines.length; i++) {
                 if (lines[i].startsWith('#EXTINF:'))
@@ -481,14 +499,21 @@
             document.getElementById('links').value = segments.join('\n');
 
             const keyLine = lines.find(l => l.startsWith('#EXT-X-KEY'));
-            if (keyLine) {
+            if (keyLine && !keyLine.includes('METHOD=NONE')) {
                 const uriMatch = keyLine.match(/URI="([^"]+)"/);
-                const ivMatch = keyLine.match(/IV=0x([0-9a-fA-F]+)/);
-                const keyBuf = await fetchKey(uriMatch[1], url);
-                const keyIv = ivMatch ? new Uint8Array(ivMatch[1].match(/../g).map(h => parseInt(h, 16))) : new Uint8Array(16);
-                log(`✔ Key fetched, IV: ${ivMatch ? 'custom' : 'default'}`, 'ok');
-                window._hlsKey = keyBuf; window._hlsIv = keyIv; window._hlsHasKey = true;
-            } else { window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false; }
+                if (!uriMatch) {
+                    log('⚠ Malformed EXT-X-KEY line — no URI', 'err');
+                    window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false;
+                } else {
+                    const ivMatch = keyLine.match(/IV=0x([0-9a-fA-F]+)/);
+                    const keyBuf = await fetchKey(uriMatch[1], url);
+                    const keyIv = ivMatch ? new Uint8Array(ivMatch[1].match(/../g).map(h => parseInt(h, 16))) : new Uint8Array(16);
+                    log(`✔ Key fetched, IV: ${ivMatch ? 'custom' : 'default'}`, 'ok');
+                    window._hlsKey = keyBuf; window._hlsIv = keyIv; window._hlsHasKey = true;
+                }
+            } else {
+                window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false;
+            }
 
             window._hlsAudioInitUrl = null; window._hlsAudioSegments = null;
             if (masterText?.includes('#EXT-X-MEDIA:TYPE=AUDIO')) {
@@ -557,7 +582,9 @@
         const filename = document.getElementById('filename').value.trim() || 'video.mp4';
         startBtn.disabled = true; _cancelled = false; cancelBtn.disabled = false;
         log('─────────────────────', 'fire');
-        barEl.style.width = '0%'; percentEl.textContent = '0%';
+        barEl.style.width = '0%';
+        percentEl.textContent = '0%';
+        bytesDownloaded = 0;
 
         try {
             // ── Pick save location ───────────────────────────────────────────
@@ -602,9 +629,11 @@
                     buf = await decryptSegment(buf, window._hlsKey, iv);
                 }
                 const name = `seg${String(i).padStart(6, '0')}${segExt}`;
+                const segSize = buf.byteLength;
                 await ffmpeg.writeFile(name, new Uint8Array(buf));
                 segNames[i] = name;
-                setProgress(++done, links.length);
+                bytesDownloaded += segSize;
+                setProgress(++done, links.length, dlStart, bytesDownloaded);
                 if (done % CONCURRENCY === 0 || done === links.length) {
                     log(`✔ segs ${done - (done % CONCURRENCY || CONCURRENCY) + 1}–${done}/${links.length}`, 'ok');
                 }
@@ -628,9 +657,11 @@
                     if (_cancelled) return;
                     const buf = new Uint8Array(await fetchSegmentViaPage(url));
                     const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
+                    const segSize = buf.byteLength;
                     await ffmpeg.writeFile(name, buf);
                     audioSegNames2[i] = name;
-                    setProgress(++aDone, window._hlsAudioSegments.length);
+                    bytesDownloaded += segSize;
+                    setProgress(++aDone, window._hlsAudioSegments.length, dlStart, bytesDownloaded);
                     if (aDone % CONCURRENCY === 0 || aDone === window._hlsAudioSegments.length) {
                         log(`✔ audio segs ${aDone - (aDone % CONCURRENCY || CONCURRENCY) + 1}–${aDone}/${window._hlsAudioSegments.length}`, 'ok');
                     }
@@ -641,7 +672,11 @@
 
             // ── Download done ────────────────────────────────────
             const dlEnd = performance.now();
+            const avgElapsed = (performance.now() - dlStart) / 1000;
+            const avgSpeed = bytesDownloaded / avgElapsed;
+
             log(`⏱ Download segments done in: ${formatDuration(Math.ceil((dlEnd - dlStart) / 1000))}`, 'fire');
+            log(`📊 Avg speed: ${formatBytes(avgSpeed)}/s over ${formatDuration(Math.ceil(avgElapsed))}`, 'inf');
 
             if (_cancelled) {
                 await writable.abort();

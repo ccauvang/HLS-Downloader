@@ -4,6 +4,7 @@ chrome.alarms.onAlarm.addListener(() => { });
 const tabUrls = {};
 const activePopupTabs = new Set();
 const keyCache = new Map();
+const pendingConfirm = new Map();
 
 function addUrl(tab, url) {
     if (tab < 0) return;
@@ -16,6 +17,25 @@ function addUrl(tab, url) {
             chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, tabId: tab }).catch(() => { });
         }
     }
+}
+
+const HLS_PATH_HINT = /(?:^|\/)(?:hls|m3u8|manifest|playlist|master)(?:[-_][^/?#]+)?(?:\/|$)/i;
+const HLS_DOTTED_HINT = /(?:^|[.-])(?:hls|m3u8)(?:[.-]|$)/i;
+const KEY_HINT = /(?:^|[/?&.-])(?:key|license|drm|token)(?:[/?&.-]|$)/i;
+
+function classifyStream(url, ct, size) {
+    const u = url.split('?')[0];
+    if (ct.includes('javascript') || ct.includes('css') ||
+        ct.includes('image/') || ct.includes('font/') ||
+        ct.includes('application/json')) return null;
+    if (KEY_HINT.test(u)) return null;
+    if (looksLikeSegment(u)) return null;   // ← moved up, before path-hint check
+    if (u.includes('.m3u8')) return 'hls';
+    if (ct.includes('mpegurl') || ct.includes('apple.mpegurl')) return 'hls';
+    if (HLS_PATH_HINT.test(u) || HLS_DOTTED_HINT.test(u)) return 'hls-maybe';
+    if ((ct.includes('text/plain') || ct.includes('octet-stream')) &&
+        (size === 0 || size < 500000)) return 'hls-maybe';
+    return null;
 }
 
 function looksLikeSegment(url) {
@@ -43,27 +63,23 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
-        const ct = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type')?.value || '';
         const tab = details.tabId;
         if (tab < 0) return;
-        if (activePopupTabs.size > 0 && !activePopupTabs.has(details.tabId)) return;
+        if (activePopupTabs.size > 0 && !activePopupTabs.has(tab)) return;
 
-        if (ct.includes('mpegurl') || ct.includes('apple.mpegurl')) {
-            addUrl(tab, details.url);
-            return;
-        }
-
-        if (ct.includes('javascript') || ct.includes('css') ||
-            ct.includes('image/') || ct.includes('font/') ||
-            ct.includes('application/json')) return;
-
-        if (details.url.includes('hls-key')) return;
-
+        const ct = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type')?.value || '';
         const size = parseInt(details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length')?.value || '0');
-        if (ct.includes('text/plain') || ct.includes('octet-stream')) {
-            if (!looksLikeSegment(details.url) && (size === 0 || size < 500000)) {
-                addUrl(tab, details.url);
-            }
+
+        const result = classifyStream(details.url, ct, size);
+
+        if (result === 'hls') {
+            addUrl(tab, details.url)
+        } else if (result === 'hls-maybe') {
+            if (!pendingConfirm.has(tab)) pendingConfirm.set(tab, new Set());
+            const seen = pendingConfirm.get(tab);
+            if (seen.has(details.url)) return;
+            seen.add(details.url);
+            chrome.tabs.sendMessage(tab, { type: 'CONFIRM_HLS_CANDIDATE', url: details.url }, { frameId: details.frameId }).catch(() => { });
         }
     },
     { urls: ['*://*/*'] },
@@ -105,6 +121,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') {
         delete tabUrls[tabId];
+        pendingConfirm.delete(tabId);
         chrome.action.setBadgeText({ text: '', tabId });
         keyCache.clear();
     }

@@ -335,7 +335,7 @@ textarea:focus {
 #bar-percent {
     font-size: 13px;
     color: #f2f0ed;
-    min-width: 36px;
+    min-width: 30px;
     text-align: right;
 }
 
@@ -345,6 +345,14 @@ textarea:focus {
     background: #3DAD66;
     transition: width .25s ease;
     border-radius: 5px;
+}
+
+#bar-eta {
+    font-size: 11px;
+    color: #888;
+    min-width: 130px;
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 #log {

@@ -107,6 +107,15 @@
         window.postMessage({ type: 'FETCH_SEGMENT_REQUEST', url: msg.url, id: msg.id }, '*');
     });
 
+    chrome.runtime.onMessage.addListener((msg) => {
+        if (msg.type !== 'CONFIRM_HLS_CANDIDATE') return;
+        _origFetch(msg.url).then(res => res.text()).then(text => {
+            if (text.trimStart().startsWith('#EXTM3U')) {
+                safeSend({ type: 'HLS_DETECTED', url: msg.url });
+            }
+        }).catch(() => { });
+    });
+
     const _observer = new MutationObserver((mutations) => {
         for (const mut of mutations) {
             for (const node of mut.addedNodes) {

@@ -11,20 +11,20 @@ function initSettings() {
         document.querySelectorAll('.batch-btn').forEach(btn => {
             btn.classList.toggle('active', parseInt(btn.dataset.val) === concurrency);
         });
-        document.getElementById('fmt-mp4').className = format === 'mp4' ? 'fmt-active' : 'fmt-inactive';
-        document.getElementById('fmt-ts').className = format === 'ts' ? 'fmt-active' : 'fmt-inactive';
+        document.getElementById('settings-fmt-mp4').className = format === 'mp4' ? 'fmt-active' : 'fmt-inactive';
+        document.getElementById('settings-fmt-ts').className = format === 'ts' ? 'fmt-active' : 'fmt-inactive';
     });
 
     // Format choose
-    document.getElementById('fmt-mp4').addEventListener('click', () => {
+    document.getElementById('settings-fmt-mp4').addEventListener('click', () => {
         format = 'mp4';
-        document.getElementById('fmt-mp4').className = 'fmt-active';
-        document.getElementById('fmt-ts').className = 'fmt-inactive';
+        document.getElementById('settings-fmt-mp4').className = 'fmt-active';
+        document.getElementById('settings-fmt-ts').className = 'fmt-inactive';
     });
-    document.getElementById('fmt-ts').addEventListener('click', () => {
+    document.getElementById('settings-fmt-ts').addEventListener('click', () => {
         format = 'ts';
-        document.getElementById('fmt-ts').className = 'fmt-active';
-        document.getElementById('fmt-mp4').className = 'fmt-inactive';
+        document.getElementById('settings-fmt-ts').className = 'fmt-active';
+        document.getElementById('settings-fmt-mp4').className = 'fmt-inactive';
     });
 
     // Batch btn
