@@ -3,6 +3,7 @@
 
     const { FFmpeg } = FFmpegWASM;
     let ffmpeg = new FFmpeg();
+    let hadCriticalFfmpegError = false;
 
     async function loadFFmpeg() {
         if (ffmpeg.loaded) return;
@@ -13,7 +14,13 @@
     }
 
     ffmpeg.on('log', ({ type, message }) => {
-        if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'inf');
+        const m = message?.trim();
+        if (type === 'stderr' && m) {
+            if (/Impossible to open|Invalid data found|No such file/i.test(m)) {
+                hadCriticalFfmpegError = true;
+                log(m, 'err');
+            } else if (shouldLogFfmpeg(m)) log(m, 'inf');
+        }
     });
     loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
 
@@ -65,6 +72,15 @@
     const btnTs = document.getElementById('fmt-ts');
     let m3u8Value = '';
     let dlFormat = 'mp4';
+
+    (async () => {
+        for (let i = 0; i < detectedM3u8.length; i++) {
+            if (typeof detectedM3u8[i] !== 'string') continue;
+            const info = await detectStreamInfo(detectedM3u8[i]).catch(() => null);
+            if (info) detectedM3u8[i] = info;
+            updateDropdown();
+        }
+    })();
 
     function updateDropdown() {
         detectedLabel.textContent = `Detected streams (${detectedM3u8.length})`;
@@ -170,11 +186,14 @@
             btnMp4.className = dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             btnTs.className = dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
         }
+
         if (state.detectedM3u8?.length) {
-            detectedM3u8.push(...state.detectedM3u8.filter(e => {
+            state.detectedM3u8.forEach(e => {
                 const url = typeof e === 'string' ? e : e.url;
-                return !detectedM3u8.find(x => (typeof x === 'string' ? x : x.url) === url);
-            }));
+                const idx = detectedM3u8.findIndex(x => (typeof x === 'string' ? x : x.url) === url);
+                if (idx === -1) detectedM3u8.push(e);
+                else if (typeof e === 'object' && typeof detectedM3u8[idx] === 'string') detectedM3u8[idx] = e; // upgrade string → rich
+            });
             updateDropdown();
         }
     });
@@ -271,15 +290,25 @@
                     if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
                     else reject(new Error(`Segment fetch timeout: ${url}`));
                 }, timeoutMs);
-                const handler = (msg) => {
+                const handler = async (msg) => {
                     if (msg.type !== 'FETCH_SEGMENT_RESPONSE' || msg.id !== id) return;
                     clearTimeout(timer);
                     chrome.runtime.onMessage.removeListener(handler);
                     if (msg.error) {
+                        if (msg.status === 429) {
+                            log(`⚠ Rate limited (429), backing off… ${url}`, 'err');
+                            await new Promise(r => setTimeout(r, 1500 * (retries - n + 1)));
+                        }
                         if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
                         else reject(new Error(msg.error));
-                    } else resolve(new Uint8Array(msg.arr).buffer);
+                    } else {
+                        const bin = atob(msg.b64);
+                        const arr = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                        resolve(arr.buffer);
+                    }
                 };
+
                 chrome.runtime.onMessage.addListener(handler);
                 chrome.tabs.sendMessage(tab.id, { type: 'PROXY_SEGMENT', url, id }, () => {
                     if (chrome.runtime.lastError) return;
@@ -574,10 +603,16 @@
 
     // ── Download ──────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', async () => {
+        let _fsWriteChain = Promise.resolve();
         const CONCURRENCY = CONCURRENCY_SETTING;
         const raw = document.getElementById('links').value.trim();
         const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
         if (!links.length) { log('⚠ No links!', 'err'); return; }
+
+        function writeFileSerial(name, data) {
+            _fsWriteChain = _fsWriteChain.then(() => ffmpeg.writeFile(name, data));
+            return _fsWriteChain;
+        }
 
         const filename = document.getElementById('filename').value.trim() || 'video.mp4';
         startBtn.disabled = true; _cancelled = false; cancelBtn.disabled = false;
@@ -658,7 +693,7 @@
                     const buf = new Uint8Array(await fetchSegmentViaPage(url));
                     const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
                     const segSize = buf.byteLength;
-                    await ffmpeg.writeFile(name, buf);
+                    await writeFileSerial(name, buf);
                     audioSegNames2[i] = name;
                     bytesDownloaded += segSize;
                     setProgress(++aDone, window._hlsAudioSegments.length, dlStart, bytesDownloaded);
@@ -684,30 +719,64 @@
                 setProgress(0, links.length); resetUI(); return;
             }
 
+            // ── Verify segment integrity — rare ffmpeg.wasm write race under concurrency ──
+            log('Verifying segments…', 'inf');
+            for (let i = 0; i < segNames.length; i++) {
+                const name = segNames[i];
+                if (!name) continue;
+                let ok = false;
+                try {
+                    const data = await ffmpeg.readFile(name);
+                    ok = data && (data.byteLength ?? data.length) > 0;
+                } catch (e) { ok = false; }
+                if (!ok) {
+                    log(`⚠ Bad segment ${name}, refetching…`, 'err');
+                    let buf = await fetchSegmentViaPage(links[i]);
+                    if (window._hlsHasKey && window._hlsKey) {
+                        const iv = window._hlsIv?.byteLength
+                            ? window._hlsIv
+                            : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + 1); return b; })();
+                        buf = await decryptSegment(buf, window._hlsKey, iv);
+                    }
+                    await writeFileSerial(name, new Uint8Array(buf));
+                }
+            }
+
             // ── Prepare inputs for ffmpeg ────────────────────────────────────
             const hasAudio = audioSegNames.length > 0;
             if (window._hlsInitUrl) {
                 log('Merging fMP4 fragments…', 'inf');
                 const vParts = [await ffmpeg.readFile('init.mp4')];
-                for (const n of segNames.filter(Boolean)) vParts.push(await ffmpeg.readFile(n));
+                await ffmpeg.deleteFile('init.mp4').catch(() => { });
+                for (const n of segNames.filter(Boolean)) {
+                    vParts.push(await ffmpeg.readFile(n));
+                    await ffmpeg.deleteFile(n).catch(() => { });
+                }
                 const vTotal = vParts.reduce((a, c) => a + c.byteLength, 0);
                 const vMerged = new Uint8Array(vTotal);
                 let off = 0; for (const p of vParts) { vMerged.set(p, off); off += p.byteLength; }
+                vParts.length = 0;
                 await ffmpeg.writeFile('video_merged.mp4', vMerged);
 
                 if (hasAudio) {
                     const aParts = [await ffmpeg.readFile('init_a.mp4')];
-                    for (const n of audioSegNames.filter(Boolean)) aParts.push(await ffmpeg.readFile(n));
+                    await ffmpeg.deleteFile('init_a.mp4').catch(() => { });
+                    for (const n of audioSegNames.filter(Boolean)) {
+                        aParts.push(await ffmpeg.readFile(n));
+                        await ffmpeg.deleteFile(n).catch(() => { });
+                    }
                     const aTotal = aParts.reduce((a, c) => a + c.byteLength, 0);
                     const aMerged = new Uint8Array(aTotal);
                     let aOff = 0; for (const p of aParts) { aMerged.set(p, aOff); aOff += p.byteLength; }
+                    aParts.length = 0;
                     await ffmpeg.writeFile('audio_merged.mp4', aMerged);
                 }
-            } else {
-                const concatList = segNames.map(n => `file '${n}'`).join('\n');
+            } else if (dlFormat !== 'ts' || hasAudio) {
+                // ffmpeg needs to combine files — hand it a list, don't merge in JS
+                const concatList = segNames.filter(Boolean).map(n => `file '${n}'`).join('\n');
                 await ffmpeg.writeFile('concat_v.txt', new TextEncoder().encode(concatList));
                 if (hasAudio) {
-                    const aConcatList = audioSegNames.map(n => `file '${n}'`).join('\n');
+                    const aConcatList = audioSegNames.filter(Boolean).map(n => `file '${n}'`).join('\n');
                     await ffmpeg.writeFile('concat_a.txt', new TextEncoder().encode(aConcatList));
                 }
             }
@@ -716,7 +785,7 @@
             const remuxStart = performance.now();
             const outName = dlFormat === 'ts' ? 'output.ts' : 'output.mp4';
 
-            if (dlFormat === 'ts' && !window._hlsInitUrl) {
+            if (dlFormat === 'ts' && !window._hlsInitUrl && !hasAudio) {
                 // TS = raw concat in JS, skip ffmpeg entirely
                 log('Writing TS to disk…', 'inf');
                 const writeToDiskStart = performance.now();
@@ -751,6 +820,17 @@
                         ? ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-f', 'concat', '-safe', '0', '-i', 'concat_a.txt', '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
                         : ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-c', 'copy', outName];
                 try { await ffmpeg.exec(ffArgs); } catch (e) { }
+
+                for (const n of [...segNames, ...audioSegNames].filter(Boolean)) await ffmpeg.deleteFile(n).catch(() => { });
+
+                if (hadCriticalFfmpegError) log('⚠ ffmpeg reported errors — output may be corrupted/incomplete', 'err');
+                hadCriticalFfmpegError = false; // reset for next run
+
+                // free everything ffmpeg no longer needs — output already muxed
+                await ffmpeg.deleteFile('concat_v.txt').catch(() => { });
+                await ffmpeg.deleteFile('concat_a.txt').catch(() => { });
+                if (window._hlsAudioInitUrl) await ffmpeg.deleteFile('init_a.mp4').catch(() => { });
+
                 const remuxEnd = performance.now();
                 log(`⏱ Remux done in: ${formatDuration(Math.ceil((remuxEnd - remuxStart) / 1000))}`, 'fire');
 
@@ -763,6 +843,7 @@
                     outData = await ffmpeg.readFile(outName);
                 }
                 if (!outData || (outData.byteLength ?? outData.length) === 0) throw new Error('ffmpeg output empty');
+                await ffmpeg.deleteFile(outName).catch(() => { });   // free wasm copy before the JS copy goes to disk
                 await writable.write(outData instanceof Uint8Array ? outData : new Uint8Array(outData));
                 await writable.close();
                 const writeToDiskEnd = performance.now();
@@ -779,24 +860,19 @@
             }
 
             // ── Cleanup ffmpeg FS ────────────────────────────────────────────
-            for (const n of [...segNames, ...audioSegNames]) await ffmpeg.deleteFile(n).catch(() => { });
-            if (!(dlFormat === 'ts' && !window._hlsInitUrl)) {
-                await ffmpeg.deleteFile('concat_v.txt').catch(() => { });
-                await ffmpeg.deleteFile('concat_a.txt').catch(() => { });
-                await ffmpeg.deleteFile(outName).catch(() => { });
-            }
-            if (window._hlsAudioInitUrl) await ffmpeg.deleteFile('init_a.mp4').catch(() => { });
-            if (window._hlsInitUrl) {
-                await ffmpeg.deleteFile('init.mp4').catch(() => { });
-                await ffmpeg.deleteFile('video_merged.mp4').catch(() => { });
-                if (hasAudio) await ffmpeg.deleteFile('audio_merged.mp4').catch(() => { });
-            }
+            await ffmpeg.deleteFile(outName).catch(() => { });
 
             setProgress(1, 1);
             try { ffmpeg.terminate(); } catch (e) { }
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ type, message }) => {
-                if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'inf');
+                const m = message?.trim();
+                if (type === 'stderr' && m) {
+                    if (/Impossible to open|Invalid data found|No such file/i.test(m)) {
+                        hadCriticalFfmpegError = true;
+                        log(m, 'err');
+                    } else if (shouldLogFfmpeg(m)) log(m, 'inf');
+                }
             });
             resetUI();
 
@@ -808,7 +884,13 @@
             try { ffmpeg.terminate(); } catch (e) { }
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ type, message }) => {
-                if (type === 'stderr' && message?.trim() && shouldLogFfmpeg(message)) log(message.trim(), 'err');
+                const m = message?.trim();
+                if (type === 'stderr' && m) {
+                    if (/Impossible to open|Invalid data found|No such file/i.test(m)) {
+                        hadCriticalFfmpegError = true;
+                        log(m, 'err');
+                    } else if (shouldLogFfmpeg(m)) log(m, 'err');
+                }
             });
             resetUI();
         }

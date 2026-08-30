@@ -16,6 +16,14 @@
         });
     }
 
+    function bufToB64(buf) {
+        let bin = '';
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i += 0x8000)
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(bin);
+    }
+
     window.addEventListener('message', (event) => {
         if (event.source !== window || event.data?.type !== 'HLS_KEY_CAPTURED') return;
         chrome.runtime.sendMessage({ type: 'HLS_KEY_CACHE_SET', url: event.data.url, bytes: event.data.bytes });
@@ -94,9 +102,12 @@
         if (event.source !== window || event.data?.type !== 'FETCH_SEGMENT_REQUEST') return;
         try {
             const res = await _origFetch(event.data.url);
+            if (!res.ok) {
+                safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, error: `HTTP ${res.status}`, status: res.status });
+                return;
+            }
             const buf = await res.arrayBuffer();
-            const arr = Array.from(new Uint8Array(buf));
-            safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, arr });
+            safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, b64: bufToB64(buf) });
         } catch (e) {
             safeSend({ type: 'FETCH_SEGMENT_RESPONSE', id: event.data.id, error: e.message });
         }
