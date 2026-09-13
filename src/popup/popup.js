@@ -73,12 +73,27 @@ import { runDownload } from './download/downloader.js';
         // verify via page context before showing
         detectStreamInfo(msg.url).then(info => {
             if (!info) return;
-            if (!state.detectedM3u8.find(e => e.url === info.url)) {
+            if (!state.detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === info.url)) {
                 state.detectedM3u8.push(info);
                 updateDropdown();
             }
-        }).catch(() => { });
+        }).catch(() => {
+            // verify failed (likely content script not ready right after reload) — add unverified, user can still pick it, gets enriched next popup open
+            if (!state.detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === msg.url)) {
+                state.detectedM3u8.push(msg.url);
+                updateDropdown();
+            }
+        });
     });
+    
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (tabId !== state.tab.id) return;
+    if (changeInfo.status === 'loading') {
+        state.detectedM3u8.length = 0;
+        updateDropdown();
+    }
+});
+
 
     chrome.storage.session.get(state.STATE_KEY, (s) => {
         const saved = s[state.STATE_KEY];
