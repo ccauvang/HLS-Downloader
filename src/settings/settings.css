@@ -107,7 +107,7 @@ body {
 
 #save-btn {
     width: 100%;
-    margin-top: 10px;
+    margin-top: 30px;
     padding: 10px;
     background: #003e1c;
     color: #3DAD66;
@@ -122,6 +122,13 @@ body {
 #save-btn:hover {
     background: #3DAD66;
     color: #f2f0ed;
+}
+
+#save-btn:disabled {
+    background: #252525;
+    color: #4B4B4B;
+    border: 1px solid #434343;
+    cursor: not-allowed;
 }
 
 #saved-msg {
