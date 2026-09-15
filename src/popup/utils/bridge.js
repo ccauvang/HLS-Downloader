@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { log } from './logger.js';
 
-export function fetchViaPage(url, timeoutMs = 30000) {
+export function fetchViaPage(url, frameId = 0, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
         const id = Math.random().toString(36).slice(2);
         const timer = setTimeout(() => reject(new Error(`Segment fetch timeout: ${url}`)), timeoutMs);
@@ -12,13 +12,13 @@ export function fetchViaPage(url, timeoutMs = 30000) {
             msg.error ? reject(new Error(msg.error)) : resolve(msg.text);
         };
         chrome.runtime.onMessage.addListener(handler);
-        chrome.tabs.sendMessage(state.tab.id, { type: 'PROXY_FETCH', url, id }, () => {
+        chrome.tabs.sendMessage(state.tab.id, { type: 'PROXY_FETCH', url, id }, { frameId }, () => {
             if (chrome.runtime.lastError) return;
         });
     });
 }
 
-export function fetchSegmentViaPage(url, timeoutMs = 60000, retries = 3) {
+export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries = 3) {
     return new Promise((resolve, reject) => {
         const attempt = (n) => {
             const id = Math.random().toString(36).slice(2);
@@ -46,7 +46,7 @@ export function fetchSegmentViaPage(url, timeoutMs = 60000, retries = 3) {
                 }
             };
             chrome.runtime.onMessage.addListener(handler);
-            chrome.tabs.sendMessage(state.tab.id, { type: 'PROXY_SEGMENT', url, id }, () => {
+            chrome.tabs.sendMessage(state.tab.id, { type: 'PROXY_SEGMENT', url, id }, { frameId }, () => {
                 if (chrome.runtime.lastError) return;
             });
         };

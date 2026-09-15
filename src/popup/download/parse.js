@@ -25,11 +25,11 @@ export async function parseStream(url) {
                 base = cached.variantUrl.substring(0, cached.variantUrl.lastIndexOf('/') + 1);
             } else if (cached.isMaster && !cached.cachedVariantText) {
                 // master but no variant cached, fetch normally
-                text = await fetchViaPage(url);
+                text = await fetchViaPage(url, state.currentFrameId);
                 base = masterBase;
             }
         } else {
-            text = await fetchViaPage(url);
+            text = await fetchViaPage(url, state.currentFrameId);
             base = masterBase;
             masterText = text;
         }
@@ -83,7 +83,7 @@ export async function parseStream(url) {
             const audioUriMatch = audioLine?.match(/URI="([^"]+)"/);
             if (audioUriMatch) {
                 const audioUrl = audioUriMatch[1].startsWith('http') ? audioUriMatch[1] : masterBase + audioUriMatch[1];
-                const audioText = await fetchViaPage(audioUrl);
+                const audioText = await fetchViaPage(audioUrl, state.currentFrameId);
                 const aBase = audioUrl.substring(0, audioUrl.lastIndexOf('/') + 1);
                 const aLines = audioText.split('\n').map(l => l.trim());
                 const aMapLine = aLines.find(l => l.startsWith('#EXT-X-MAP'));

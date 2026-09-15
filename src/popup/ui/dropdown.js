@@ -22,6 +22,7 @@ export function updateDropdown() {
         opt.addEventListener('click', (e) => {
             e.stopPropagation();
             state.m3u8Value = url;
+            state.currentFrameId = entry.frameId ?? 0;
             dom.m3u8Selected.textContent = opt.textContent;
             document.getElementById('m3u8-url').value = url;
             dom.m3u8Options.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));

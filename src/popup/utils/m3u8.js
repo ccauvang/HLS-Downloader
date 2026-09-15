@@ -13,8 +13,8 @@ export function parseMediaPlaylist(text) {
     return { duration, segments };
 }
 
-export async function detectStreamInfo(url) {
-    const text = await fetchViaPage(url);
+export async function detectStreamInfo(url, frameId = 0) {
+    const text = await fetchViaPage(url, frameId);
     if (!text.trimStart().startsWith('#EXTM3U')) return null;
 
     const lines = text.split('\n').map(l => l.trim());
@@ -36,7 +36,7 @@ export async function detectStreamInfo(url) {
             const base = url.substring(0, url.lastIndexOf('/') + 1);
             const variantUrl = bestUrl.startsWith('http') ? bestUrl : base + bestUrl;
             try {
-                const variantText = await fetchViaPage(variantUrl);
+                const variantText = await fetchViaPage(variantUrl, frameId);
                 const info = parseMediaPlaylist(variantText);
                 return {
                     url, isMaster: true,

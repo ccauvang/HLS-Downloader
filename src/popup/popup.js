@@ -22,13 +22,14 @@ import { runDownload } from './download/downloader.js';
     const params = new URLSearchParams(window.location.search);
     state.tab = await chrome.tabs.get(parseInt(params.get('tabId')));
     state.STATE_KEY = `state_${state.tab.id}`;
-    state.detectedM3u8 = await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: state.tab.id }) || [];
+    state.detectedM3u8 = (await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: state.tab.id })) || [];
 
     (async () => {
         for (let i = 0; i < state.detectedM3u8.length; i++) {
-            if (typeof state.detectedM3u8[i] !== 'string') continue;
-            const info = await detectStreamInfo(state.detectedM3u8[i]).catch(() => null);
-            if (info) state.detectedM3u8[i] = info;
+            const entry = state.detectedM3u8[i];
+            if (typeof entry !== 'object' || entry.isMaster !== undefined) continue; // already rich or malformed
+            const info = await detectStreamInfo(entry.url, entry.frameId).catch(() => null);
+            if (info) state.detectedM3u8[i] = { ...info, frameId: entry.frameId };
             updateDropdown();
         }
     })();
@@ -69,30 +70,26 @@ import { runDownload } from './download/downloader.js';
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type !== 'HLS_DETECTED') return;
         if (msg.tabId !== state.tab.id) return;
-        if (state.detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === msg.url)) return;
-        // verify via page context before showing
-        detectStreamInfo(msg.url).then(info => {
+        if (state.detectedM3u8.find(e => e.url === msg.url)) return;
+        detectStreamInfo(msg.url, msg.frameId).then(info => {
             if (!info) return;
-            if (!state.detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === info.url)) {
-                state.detectedM3u8.push(info);
+            if (!state.detectedM3u8.find(e => e.url === info.url)) {
+                state.detectedM3u8.push({ ...info, frameId: msg.frameId });
                 updateDropdown();
             }
         }).catch(() => {
-            // verify failed (likely content script not ready right after reload) — add unverified, user can still pick it, gets enriched next popup open
-            if (!state.detectedM3u8.find(e => (typeof e === 'object' ? e.url : e) === msg.url)) {
-                state.detectedM3u8.push(msg.url);
-                updateDropdown();
-            }
+            state.detectedM3u8.push({ url: msg.url, frameId: msg.frameId });
+            updateDropdown();
         });
     });
-    
+
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (tabId !== state.tab.id) return;
-    if (changeInfo.status === 'loading') {
-        state.detectedM3u8.length = 0;
-        updateDropdown();
-    }
-});
+        if (tabId !== state.tab.id) return;
+        if (changeInfo.status === 'loading') {
+            state.detectedM3u8.length = 0;
+            updateDropdown();
+        }
+    });
 
 
     chrome.storage.session.get(state.STATE_KEY, (s) => {

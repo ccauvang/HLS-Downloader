@@ -6,15 +6,15 @@ const activePopupTabs = new Set();
 const keyCache = new Map();
 const pendingConfirm = new Map();
 
-function addUrl(tab, url) {
+function addUrl(tab, url, frameId = 0) {
     if (tab < 0) return;
     if (!tabUrls[tab]) tabUrls[tab] = [];
-    if (!tabUrls[tab].includes(url)) {
-        tabUrls[tab].push(url);
+    if (!tabUrls[tab].find(e => e.url === url)) {
+        tabUrls[tab].push({ url, frameId });
         chrome.action.setBadgeText({ text: String(tabUrls[tab].length), tabId: tab });
         chrome.action.setBadgeBackgroundColor({ color: '#e93434', tabId: tab });
         if (activePopupTabs.size > 0) {
-            chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, tabId: tab }).catch(() => { });
+            chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, frameId, tabId: tab }).catch(() => { });
         }
     }
 }
@@ -54,7 +54,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
         if (activePopupTabs.size > 0 && !activePopupTabs.has(details.tabId)) return;
         if (details.url.includes('.m3u8') || details.url.includes('.mpd')) {
-            addUrl(details.tabId, details.url);
+            addUrl(details.tabId, details.url, details.frameId);
         }
 
     },
@@ -73,7 +73,7 @@ chrome.webRequest.onHeadersReceived.addListener(
         const result = classifyStream(details.url, ct, size);
 
         if (result === 'hls') {
-            addUrl(tab, details.url)
+            addUrl(tab, details.url, details.frameId)
         } else if (result === 'hls-maybe') {
             if (!pendingConfirm.has(tab)) pendingConfirm.set(tab, new Set());
             const seen = pendingConfirm.get(tab);
@@ -88,7 +88,7 @@ chrome.webRequest.onHeadersReceived.addListener(
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'HLS_DETECTED') {
-        if (sender?.tab?.id) addUrl(sender.tab.id, msg.url);
+        if (sender?.tab?.id) addUrl(sender.tab.id, msg.url, sender.frameId);
         return;
     }
     if (msg.type === 'GET_URLS') {

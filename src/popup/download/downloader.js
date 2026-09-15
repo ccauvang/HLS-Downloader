@@ -44,11 +44,11 @@ export async function runDownload() {
         // ── Handle fMP4 init segment ─────────────────────────────────────
         if (window._hlsInitUrl) {
             log('fMP4 — fetching init…', 'inf');
-            const initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl));
+            const initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl, state.currentFrameId));
             await state.ffmpeg.writeFile('init.mp4', initBuf);
         }
         if (window._hlsAudioInitUrl) {
-            const aInitBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsAudioInitUrl));
+            const aInitBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsAudioInitUrl, state.currentFrameId));
             await state.ffmpeg.writeFile('init_a.mp4', aInitBuf);
         }
 
@@ -61,7 +61,7 @@ export async function runDownload() {
         let done = 0;
         const vQueue = links.map((url, i) => async () => {
             if (state.cancelled) return;
-            let buf = await fetchSegmentViaPage(url);
+            let buf = await fetchSegmentViaPage(url, state.currentFrameId);
             if (window._hlsHasKey && window._hlsKey) {
                 const iv = window._hlsIv?.byteLength
                     ? window._hlsIv
@@ -95,7 +95,7 @@ export async function runDownload() {
             let aDone = 0;
             const aQueue = window._hlsAudioSegments.map((url, i) => async () => {
                 if (state.cancelled) return;
-                const buf = new Uint8Array(await fetchSegmentViaPage(url));
+                const buf = new Uint8Array(await fetchSegmentViaPage(url, state.currentFrameId));
                 const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
                 const segSize = buf.byteLength;
                 await writeFileSerial(name, buf);
@@ -136,7 +136,7 @@ export async function runDownload() {
             } catch (e) { ok = false; }
             if (!ok) {
                 log(`⚠ Bad segment ${name}, refetching…`, 'err');
-                let buf = await fetchSegmentViaPage(links[i]);
+                let buf = await fetchSegmentViaPage(links[i], state.currentFrameId);
                 if (window._hlsHasKey && window._hlsKey) {
                     const iv = window._hlsIv?.byteLength
                         ? window._hlsIv
