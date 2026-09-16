@@ -110,6 +110,9 @@ import { runDownload } from './download/downloader.js';
         }
     });
 
+    chrome.tabs.onRemoved.addListener((tabId) => {
+        if (tabId === state.tab.id) window.close();
+    });
 
     chrome.storage.session.get(state.STATE_KEY, (s) => {
         const saved = s[state.STATE_KEY];
