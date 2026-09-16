@@ -10,14 +10,20 @@ const tabHostnames = {};
 
 chrome.storage.sync.get({ blacklist: [] }, (s) => s.blacklist.forEach(h => blacklistedHosts.add(h)));
 
-function isTabBlacklisted(tabId) {
-    const host = tabHostnames[tabId];
+function hostFromUrl(url) {
+    try { return new URL(url).hostname; } catch (e) { return null; }
+}
+
+function isHostBlacklisted(host) {
     return host ? blacklistedHosts.has(host) : false;
+}
+
+function isTabBlacklisted(tabId) {
+    return isHostBlacklisted(tabHostnames[tabId]);
 }
 
 function addUrl(tab, url, frameId = 0) {
     if (tab < 0) return;
-    if (isTabBlacklisted(tab)) return;
     if (!tabUrls[tab]) tabUrls[tab] = [];
     if (!tabUrls[tab].find(e => e.url === url)) {
         tabUrls[tab].push({ url, frameId });
@@ -62,21 +68,22 @@ function looksLikeSegment(url) {
 
 chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
-        if (isTabBlacklisted(details.tabId)) return;
+        const host = details.initiator ? hostFromUrl(details.initiator) : tabHostnames[details.tabId];
+        if (isHostBlacklisted(host)) return;
         if (activePopupTabs.size > 0 && !activePopupTabs.has(details.tabId)) return;
         if (details.url.includes('.m3u8') || details.url.includes('.mpd')) {
             addUrl(details.tabId, details.url, details.frameId);
         }
-
     },
     { urls: ['*://*/*'] }
 );
 
 chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
-        if (isTabBlacklisted(details.tabId)) return;
         const tab = details.tabId;
         if (tab < 0) return;
+        const host = details.initiator ? hostFromUrl(details.initiator) : tabHostnames[tab];
+        if (isHostBlacklisted(host)) return;
         if (activePopupTabs.size > 0 && !activePopupTabs.has(tab)) return;
 
         const ct = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type')?.value || '';
@@ -100,7 +107,11 @@ chrome.webRequest.onHeadersReceived.addListener(
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'HLS_DETECTED') {
-        if (sender?.tab?.id) addUrl(sender.tab.id, msg.url, sender.frameId);
+        if (sender?.tab?.id) {
+            const host = sender.tab.url ? hostFromUrl(sender.tab.url) : tabHostnames[sender.tab.id];
+            if (isHostBlacklisted(host)) return;
+            addUrl(sender.tab.id, msg.url, sender.frameId);
+        }
         return;
     }
     if (msg.type === 'GET_URLS') {
