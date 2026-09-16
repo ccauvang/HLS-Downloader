@@ -22,6 +22,25 @@ import { runDownload } from './download/downloader.js';
     const params = new URLSearchParams(window.location.search);
     state.tab = await chrome.tabs.get(parseInt(params.get('tabId')));
     state.STATE_KEY = `state_${state.tab.id}`;
+    const siteHost = new URL(state.tab.url).hostname;
+
+    document.getElementById('site-url-label').textContent = siteHost;
+
+    const blBtn = document.getElementById('blacklist-btn');
+    chrome.runtime.sendMessage({ type: 'GET_BLACKLIST_STATUS', tabId: state.tab.id }, (res) => {
+        if (res?.blacklisted) {
+            blBtn.classList.add('active');
+            blBtn.textContent = 'Resume detection';
+        }
+    });
+
+    blBtn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'TOGGLE_BLACKLIST', host: siteHost }, (res) => {
+            blBtn.classList.toggle('active', res.blacklisted);
+            blBtn.textContent = res.blacklisted ? 'Resume detection' : 'Pause detection here';
+        });
+    });
+
     state.detectedM3u8 = (await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: state.tab.id })) || [];
 
     (async () => {

@@ -5,9 +5,19 @@ const tabUrls = {};
 const activePopupTabs = new Set();
 const keyCache = new Map();
 const pendingConfirm = new Map();
+const blacklistedHosts = new Set();
+const tabHostnames = {};
+
+chrome.storage.sync.get({ blacklist: [] }, (s) => s.blacklist.forEach(h => blacklistedHosts.add(h)));
+
+function isTabBlacklisted(tabId) {
+    const host = tabHostnames[tabId];
+    return host ? blacklistedHosts.has(host) : false;
+}
 
 function addUrl(tab, url, frameId = 0) {
     if (tab < 0) return;
+    if (isTabBlacklisted(tab)) return;
     if (!tabUrls[tab]) tabUrls[tab] = [];
     if (!tabUrls[tab].find(e => e.url === url)) {
         tabUrls[tab].push({ url, frameId });
@@ -52,6 +62,7 @@ function looksLikeSegment(url) {
 
 chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
+        if (isTabBlacklisted(details.tabId)) return;
         if (activePopupTabs.size > 0 && !activePopupTabs.has(details.tabId)) return;
         if (details.url.includes('.m3u8') || details.url.includes('.mpd')) {
             addUrl(details.tabId, details.url, details.frameId);
@@ -63,6 +74,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
+        if (isTabBlacklisted(details.tabId)) return;
         const tab = details.tabId;
         if (tab < 0) return;
         if (activePopupTabs.size > 0 && !activePopupTabs.has(tab)) return;
@@ -97,6 +109,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.type === 'SET_ACTIVE_TAB') {
         activePopupTabs.add(msg.tabId);
+        if (!tabHostnames[msg.tabId]) {
+            chrome.tabs.get(msg.tabId, (tab) => {
+                if (tab?.url) { try { tabHostnames[msg.tabId] = new URL(tab.url).hostname; } catch (e) { } }
+            });
+        }
         return;
     }
     if (msg.type === 'UNSET_ACTIVE_TAB') {
@@ -109,6 +126,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.type === 'GET_CACHED_KEY') {
         sendResponse(keyCache.get(msg.url) || null);
+        return true;
+    }
+    if (msg.type === 'GET_BLACKLIST_STATUS') {
+        sendResponse({ blacklisted: isTabBlacklisted(msg.tabId) });
+        return true;
+    }
+    if (msg.type === 'TOGGLE_BLACKLIST') {
+        chrome.storage.sync.get({ blacklist: [] }, (s) => {
+            const list = s.blacklist;
+            const idx = list.indexOf(msg.host);
+            if (idx === -1) list.push(msg.host); else list.splice(idx, 1);
+            chrome.storage.sync.set({ blacklist: list }, () => {
+                blacklistedHosts.clear();
+                list.forEach(h => blacklistedHosts.add(h));
+                sendResponse({ blacklisted: idx === -1 });
+            });
+        });
         return true;
     }
 });
@@ -125,6 +159,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
         chrome.action.setBadgeText({ text: '', tabId });
         keyCache.clear();
     }
+    if (changeInfo.url) {
+        try { tabHostnames[tabId] = new URL(changeInfo.url).hostname; } catch (e) { }
+    }
 });
 
 chrome.action.onClicked.addListener((tab) => {
@@ -132,7 +169,7 @@ chrome.action.onClicked.addListener((tab) => {
         url: chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`,
         type: 'popup',
         width: 600,
-        height: 850
+        height: 900
     });
 });
 
