@@ -127,6 +127,9 @@ body::-webkit-scrollbar {
     color: #e0e0e0;
     font-family: 'JetBrains Mono', monospace;
     padding-right: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .entry-info {
@@ -142,7 +145,6 @@ body::-webkit-scrollbar {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    width: fit-content;
     display: block;
 }
 
