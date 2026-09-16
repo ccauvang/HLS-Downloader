@@ -1,11 +1,13 @@
 import { dom } from '../dom.js';
 import { state, saveState } from '../state.js';
 import { log } from '../utils/logger.js';
-import { fetchSegmentViaPage, decryptSegment } from '../utils/bridge.js';
+import { fetchSegmentViaPage } from '../utils/bridge.js';
 import { formatBytes, formatDuration } from '../utils/format.js';
 import { setProgress, resetUI } from '../ui/progress.js';
 import { saveHistory } from '../store/history-store.js';
 import { loadFFmpeg, resetFfmpeg } from '../ffmpeg/engine.js';
+import { downloadVideoSegments, downloadAudioSegments, verifySegments } from './segments.js';
+import { mergeFmp4Fragments, writeConcatLists, remux, readAndCleanupOutput } from './mux.js';
 
 export async function runDownload() {
     let _fsWriteChain = Promise.resolve();
@@ -56,30 +58,8 @@ export async function runDownload() {
         log(`${links.length} segments. Downloading…`, 'fire');
 
         // ── Download segments → write to ffmpeg FS ───────────────────────
-        const segNames = [];
         const segExt = window._hlsInitUrl ? '.mp4' : '.ts';
-        let done = 0;
-        const vQueue = links.map((url, i) => async () => {
-            if (state.cancelled) return;
-            let buf = await fetchSegmentViaPage(url, state.currentFrameId);
-            if (window._hlsHasKey && window._hlsKey) {
-                const iv = window._hlsIv?.byteLength
-                    ? window._hlsIv
-                    : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + 1); return b; })();
-                buf = await decryptSegment(buf, window._hlsKey, iv);
-            }
-            const name = `seg${String(i).padStart(6, '0')}${segExt}`;
-            const segSize = buf.byteLength;
-            await state.ffmpeg.writeFile(name, new Uint8Array(buf));
-            segNames[i] = name;
-            state.bytesDownloaded += segSize;
-            setProgress(++done, links.length, dlStart, state.bytesDownloaded);
-            if (done % CONCURRENCY === 0 || done === links.length) {
-                log(`✔ segs ${done - (done % CONCURRENCY || CONCURRENCY) + 1}–${done}/${links.length}`, 'ok');
-            }
-        });
-        await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (vQueue.length) await vQueue.shift()(); }));
-        log(`✔ ${links.length} segs done`, 'ok');
+        const segNames = await downloadVideoSegments(links, segExt, CONCURRENCY, dlStart);
 
         if (state.cancelled) {
             await writable.abort();
@@ -88,27 +68,7 @@ export async function runDownload() {
         }
 
         // ── Download audio segments → ffmpeg FS ─────────────────────────
-        const audioSegNames = [];
-        if (window._hlsAudioSegments?.length) {
-            log(`Downloading ${window._hlsAudioSegments.length} audio segs…`, 'inf');
-            const audioSegNames2 = [];
-            let aDone = 0;
-            const aQueue = window._hlsAudioSegments.map((url, i) => async () => {
-                if (state.cancelled) return;
-                const buf = new Uint8Array(await fetchSegmentViaPage(url, state.currentFrameId));
-                const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
-                const segSize = buf.byteLength;
-                await writeFileSerial(name, buf);
-                audioSegNames2[i] = name;
-                state.bytesDownloaded += segSize;
-                setProgress(++aDone, window._hlsAudioSegments.length, dlStart, state.bytesDownloaded);
-                if (aDone % CONCURRENCY === 0 || aDone === window._hlsAudioSegments.length) {
-                    log(`✔ audio segs ${aDone - (aDone % CONCURRENCY || CONCURRENCY) + 1}–${aDone}/${window._hlsAudioSegments.length}`, 'ok');
-                }
-            });
-            await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (aQueue.length) await aQueue.shift()(); }));
-            audioSegNames.push(...audioSegNames2.filter(Boolean));
-        }
+        const audioSegNames = await downloadAudioSegments(window._hlsAudioSegments, segExt, CONCURRENCY, dlStart, writeFileSerial);
 
         // ── Download done ────────────────────────────────────
         const dlEnd = performance.now();
@@ -124,66 +84,15 @@ export async function runDownload() {
             setProgress(0, links.length); resetUI(); return;
         }
 
-        // ── Verify segment integrity — rare ffmpeg.wasm write race under concurrency ──
-        log('Verifying segments…', 'inf');
-        for (let i = 0; i < segNames.length; i++) {
-            const name = segNames[i];
-            if (!name) continue;
-            let ok = false;
-            try {
-                const data = await state.ffmpeg.readFile(name);
-                ok = data && (data.byteLength ?? data.length) > 0;
-            } catch (e) { ok = false; }
-            if (!ok) {
-                log(`⚠ Bad segment ${name}, refetching…`, 'err');
-                let buf = await fetchSegmentViaPage(links[i], state.currentFrameId);
-                if (window._hlsHasKey && window._hlsKey) {
-                    const iv = window._hlsIv?.byteLength
-                        ? window._hlsIv
-                        : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + 1); return b; })();
-                    buf = await decryptSegment(buf, window._hlsKey, iv);
-                }
-                await writeFileSerial(name, new Uint8Array(buf));
-            }
-        }
+        await verifySegments(segNames, links, writeFileSerial);
 
         // ── Prepare inputs for ffmpeg ────────────────────────────────────
         const hasAudio = audioSegNames.length > 0;
         if (window._hlsInitUrl) {
-            log('Merging fMP4 fragments…', 'inf');
-            const vParts = [await state.ffmpeg.readFile('init.mp4')];
-            await state.ffmpeg.deleteFile('init.mp4').catch(() => { });
-            for (const n of segNames.filter(Boolean)) {
-                vParts.push(await state.ffmpeg.readFile(n));
-                await state.ffmpeg.deleteFile(n).catch(() => { });
-            }
-            const vTotal = vParts.reduce((a, c) => a + c.byteLength, 0);
-            const vMerged = new Uint8Array(vTotal);
-            let off = 0; for (const p of vParts) { vMerged.set(p, off); off += p.byteLength; }
-            vParts.length = 0;
-            await state.ffmpeg.writeFile('video_merged.mp4', vMerged);
-
-            if (hasAudio) {
-                const aParts = [await state.ffmpeg.readFile('init_a.mp4')];
-                await state.ffmpeg.deleteFile('init_a.mp4').catch(() => { });
-                for (const n of audioSegNames.filter(Boolean)) {
-                    aParts.push(await state.ffmpeg.readFile(n));
-                    await state.ffmpeg.deleteFile(n).catch(() => { });
-                }
-                const aTotal = aParts.reduce((a, c) => a + c.byteLength, 0);
-                const aMerged = new Uint8Array(aTotal);
-                let aOff = 0; for (const p of aParts) { aMerged.set(p, aOff); aOff += p.byteLength; }
-                aParts.length = 0;
-                await state.ffmpeg.writeFile('audio_merged.mp4', aMerged);
-            }
+            await mergeFmp4Fragments(segNames, audioSegNames, hasAudio);
         } else if (state.dlFormat !== 'ts' || hasAudio) {
             // ffmpeg needs to combine files — hand it a list, don't merge in JS
-            const concatList = segNames.filter(Boolean).map(n => `file '${n}'`).join('\n');
-            await state.ffmpeg.writeFile('concat_v.txt', new TextEncoder().encode(concatList));
-            if (hasAudio) {
-                const aConcatList = audioSegNames.filter(Boolean).map(n => `file '${n}'`).join('\n');
-                await state.ffmpeg.writeFile('concat_a.txt', new TextEncoder().encode(aConcatList));
-            }
+            await writeConcatLists(segNames, audioSegNames, hasAudio);
         }
 
         // ── Remux / concat ───────────────────────────────────────────────────────
@@ -216,25 +125,7 @@ export async function runDownload() {
             saveState();
         } else {
             // MP4 or fMP4 = need ffmpeg
-            log('Remuxing with ffmpeg…', 'inf');
-            const ffArgs = window._hlsInitUrl
-                ? hasAudio
-                    ? ['-i', 'video_merged.mp4', '-i', 'audio_merged.mp4', '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
-                    : ['-i', 'video_merged.mp4', '-c', 'copy', outName]
-                : hasAudio
-                    ? ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-f', 'concat', '-safe', '0', '-i', 'concat_a.txt', '-c', 'copy', '-map', '0:v:0', '-map', '1:a:0', outName]
-                    : ['-f', 'concat', '-safe', '0', '-i', 'concat_v.txt', '-c', 'copy', outName];
-            try { await state.ffmpeg.exec(ffArgs); } catch (e) { }
-
-            for (const n of [...segNames, ...audioSegNames].filter(Boolean)) await state.ffmpeg.deleteFile(n).catch(() => { });
-
-            if (state.hadCriticalFfmpegError) log('⚠ ffmpeg reported errors — output may be corrupted/incomplete', 'err');
-            state.hadCriticalFfmpegError = false; // reset for next run
-
-            // free everything ffmpeg no longer needs — output already muxed
-            await state.ffmpeg.deleteFile('concat_v.txt').catch(() => { });
-            await state.ffmpeg.deleteFile('concat_a.txt').catch(() => { });
-            if (window._hlsAudioInitUrl) await state.ffmpeg.deleteFile('init_a.mp4').catch(() => { });
+            await remux(hasAudio, outName, segNames, audioSegNames);
 
             const remuxEnd = performance.now();
             log(`⏱ Remux done in: ${formatDuration(Math.ceil((remuxEnd - remuxStart) / 1000))}`, 'fire');
@@ -242,13 +133,7 @@ export async function runDownload() {
             // ── Stream output to disk ────────────────────────────────────────
             const writeToDiskStart = performance.now();
             log('✔ Remux done. Writing to disk…', 'ok');
-            let outData;
-            try { outData = await state.ffmpeg.readFile(outName); } catch (e) {
-                await new Promise(r => setTimeout(r, 800));
-                outData = await state.ffmpeg.readFile(outName);
-            }
-            if (!outData || (outData.byteLength ?? outData.length) === 0) throw new Error('ffmpeg output empty');
-            await state.ffmpeg.deleteFile(outName).catch(() => { });   // free wasm copy before the JS copy goes to disk
+            const outData = await readAndCleanupOutput(outName);
             await writable.write(outData instanceof Uint8Array ? outData : new Uint8Array(outData));
             await writable.close();
             const writeToDiskEnd = performance.now();
