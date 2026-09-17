@@ -1,3 +1,5 @@
+// central DOM cache — grabbed once at module load, since popup.html's own elements
+// never get rebuilt/replaced (unlike the injected history/settings views, see views.js)
 export const dom = {
     m3u8SelectEl: document.getElementById('m3u8-select'),
     m3u8Selected: document.getElementById('m3u8-selected'),

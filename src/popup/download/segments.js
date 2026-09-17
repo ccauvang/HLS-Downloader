@@ -6,6 +6,7 @@ import { setProgress } from '../ui/progress.js';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function computeIv(i) {
+    // spec default when the playlist gives no explicit IV: segment's own sequence number, big-endian in the last 4 bytes
     return window._hlsIv?.byteLength
         ? window._hlsIv
         : (() => { const b = new Uint8Array(16); new DataView(b.buffer).setUint32(12, i + 1); return b; })();
@@ -21,11 +22,13 @@ async function decryptIfNeeded(buf, i) {
 export async function downloadVideoSegments(links, segExt, CONCURRENCY, dlStart) {
     const segNames = [];
     let done = 0;
+    // worker-pool pattern: N async fns pull from a shared queue array rather than
+    // slicing links into N fixed batches — keeps all workers busy even if some segments are slower than others
     const vQueue = links.map((url, i) => async () => {
         if (state.cancelled) return;
         let buf = await fetchSegmentViaPage(url, state.currentFrameId);
         buf = await decryptIfNeeded(buf, i);
-        const name = `seg${String(i).padStart(6, '0')}${segExt}`;
+        const name = `seg${String(i).padStart(6, '0')}${segExt}`; // zero-padded so ffmpeg's concat/lexical file ordering matches segment sequence
         const segSize = buf.byteLength;
         await state.ffmpeg.writeFile(name, new Uint8Array(buf));
         segNames[i] = name;
@@ -34,6 +37,8 @@ export async function downloadVideoSegments(links, segExt, CONCURRENCY, dlStart)
         if (done % CONCURRENCY === 0 || done === links.length) {
             log(`✔ segs ${done - (done % CONCURRENCY || CONCURRENCY) + 1}–${done}/${links.length}`, 'ok');
         }
+        // delay must sit after the log block, not before — sleeping between the counter
+        // increment and the log check let other workers race ahead and log overlapping ranges (see fix history)
         if (state.chunkDelayEnabled && state.chunkDelay > 0 && vQueue.length > 0) await sleep(state.chunkDelay);
     });
     await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (vQueue.length) await vQueue.shift()(); }));
@@ -52,7 +57,7 @@ export async function downloadAudioSegments(audioUrls, segExt, CONCURRENCY, dlSt
         const buf = new Uint8Array(await fetchSegmentViaPage(url, state.currentFrameId));
         const name = `aseg${String(i).padStart(6, '0')}${segExt}`;
         const segSize = buf.byteLength;
-        await writeFileSerial(name, buf);
+        await writeFileSerial(name, buf); // serialized writeFile (unlike video's direct ffmpeg.writeFile) — audio queue can run concurrently with the video queue's own FS writes, needs the shared chain from downloader.js
         names[i] = name;
         state.bytesDownloaded += segSize;
         setProgress(++aDone, audioUrls.length, dlStart, state.bytesDownloaded);
@@ -81,7 +86,7 @@ export async function verifySegments(segNames, links, writeFileSerial) {
             log(`⚠ Bad segment ${name}, refetching…`, 'err');
             let buf = await fetchSegmentViaPage(links[i], state.currentFrameId);
             buf = await decryptIfNeeded(buf, i);
-            await writeFileSerial(name, new Uint8Array(buf));
+            await writeFileSerial(name, new Uint8Array(buf)); // serial write here too — this can run after/alongside the parallel download phase, same FS-safety concern applies
         }
     }
 }

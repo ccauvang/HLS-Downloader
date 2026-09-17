@@ -29,6 +29,8 @@ function checkDirty() {
 function initSettings() {
     // load current settings from storage and paint UI to match
     chrome.storage.sync.get(DEFAULTS, (s) => {
+        // guards against the view being switched away (home/history) before this async
+        // callback resolves — by then these elements are gone, not just hidden
         if (!document.getElementById('chunk-delay-ms')) return;
         concurrency = s.concurrency;
         format = s.format;

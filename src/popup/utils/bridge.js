@@ -1,6 +1,10 @@
 import { state } from '../state.js';
 import { log } from './logger.js';
 
+// popup can't fetch page URLs directly (no cookies/session/CORS context of the page) —
+// these proxy the fetch through content.js running in the page itself, correlated by
+// a random request id since chrome.tabs.sendMessage has no built-in request/response pairing
+
 export function fetchViaPage(url, frameId = 0, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
         const id = Math.random().toString(36).slice(2);
@@ -13,7 +17,7 @@ export function fetchViaPage(url, frameId = 0, timeoutMs = 30000) {
         };
         chrome.runtime.onMessage.addListener(handler);
         chrome.tabs.sendMessage(state.tab.id, { type: 'PROXY_FETCH', url, id }, { frameId }, () => {
-            if (chrome.runtime.lastError) return;
+            if (chrome.runtime.lastError) return; // tab/frame gone — timeout above handles it
         });
     });
 }
@@ -36,6 +40,7 @@ export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries
                 chrome.runtime.onMessage.removeListener(handler);
                 if (msg.error) {
                     if (msg.status === 429) {
+                        // scale backoff by retry attempt so repeated 429s widen the gap instead of hammering identically
                         log(`⚠ Rate limited (429), backing off… ${url}`, 'err');
                         await new Promise(r => setTimeout(r, 5000 * (retries - n + 1)));
                     }
@@ -45,6 +50,8 @@ export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries
                     }
                     else reject(new Error(msg.error));
                 } else {
+                    // segment bytes cross the postMessage/runtime-message boundary as base64 (content.js's
+                    // bufToB64) since raw ArrayBuffers can't ride along structured-clone messaging cleanly here
                     const bin = atob(msg.b64);
                     const arr = new Uint8Array(bin.length);
                     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -62,6 +69,8 @@ export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries
 
 export async function fetchKey(keyUri, baseUrl) {
     const url = keyUri.startsWith('http') ? keyUri : new URL(keyUri, baseUrl).href;
+    // key must already be sitting in background.js's keyCache — hook.js (MAIN world) captures it
+    // passively off the page's own request, we never re-fetch it ourselves (could 403/expire on retry)
     const bytes = await chrome.runtime.sendMessage({ type: 'GET_CACHED_KEY', url });
     if (!bytes) throw new Error('Key not cached — reload page and retry before key expires');
     return new Uint8Array(bytes).buffer;

@@ -13,7 +13,7 @@ import { runDownload } from './download/downloader.js';
     'use strict';
 
     createFfmpeg('inf');
-    loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e));
+    loadFFmpeg().catch(e => console.error('ffmpeg preload fail:', e)); // non-fatal — actual download flow re-awaits loadFFmpeg() before use
 
     // ── Preload history & settings assets ────────────────────────────────────
     preloadViews();
@@ -43,6 +43,8 @@ import { runDownload } from './download/downloader.js';
 
     state.detectedM3u8 = (await chrome.runtime.sendMessage({ type: 'GET_URLS', tabId: state.tab.id })) || [];
 
+    // background only stores bare {url, frameId} — enrich each with segment count/duration
+    // in the background so the dropdown doesn't block on it; updateDropdown() repaints as each resolves
     (async () => {
         for (let i = 0; i < state.detectedM3u8.length; i++) {
             const entry = state.detectedM3u8[i];
@@ -56,6 +58,8 @@ import { runDownload } from './download/downloader.js';
     document.getElementById('links').addEventListener('input', saveState);
     document.getElementById('filename').addEventListener('input', saveState);
 
+    // background only pushes live HLS_DETECTED updates to tabs it knows have a popup open —
+    // this pair marks the window so background.js's activePopupTabs check includes us
     chrome.runtime.sendMessage({ type: 'SET_ACTIVE_TAB', tabId: state.tab.id });
     window.addEventListener('unload', () => {
         chrome.runtime.sendMessage({ type: 'UNSET_ACTIVE_TAB', tabId: state.tab.id });
@@ -69,6 +73,8 @@ import { runDownload } from './download/downloader.js';
     state.chunkDelay = chunkDelay;
     state.chunkDelayEnabled = chunkDelayEnabled;
 
+    // first-log line can be missing if the user cleared the log without the id-preserving
+    // fix (or on some other DOM edge case) — guard so this doesn't throw and kill the listener
     const firstLogEl = document.getElementById('first-log');
     if (firstLogEl) firstLogEl.textContent =
         `Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0`;
@@ -103,6 +109,8 @@ import { runDownload } from './download/downloader.js';
                 updateDropdown();
             }
         }).catch(() => {
+            // detectStreamInfo failed (fetch error, malformed playlist, etc) — still record
+            // the bare url so it's selectable, just without the rich label
             state.detectedM3u8.push({ url: msg.url, frameId: msg.frameId });
             updateDropdown();
         });
@@ -111,13 +119,14 @@ import { runDownload } from './download/downloader.js';
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
         if (tabId !== state.tab.id) return;
         if (changeInfo.status === 'loading') {
+            // page navigated — old detected streams belong to a page that's gone now
             state.detectedM3u8.length = 0;
             updateDropdown();
         }
     });
 
     chrome.tabs.onRemoved.addListener((tabId) => {
-        if (tabId === state.tab.id) window.close();
+        if (tabId === state.tab.id) window.close(); // popup is tied to this tab, no reason to keep it open
     });
 
     chrome.storage.session.get(state.STATE_KEY, (s) => {
@@ -168,6 +177,8 @@ import { runDownload } from './download/downloader.js';
 
     // ── Log buttons ───────────────────────────────────────────────────────────
     document.getElementById('clear-log-btn').addEventListener('click', () => {
+        // id="first-log" must survive this rebuild — SETTINGS_UPDATED and the initial paint
+        // both target that id directly, and losing it here is what caused the earlier crash
         dom.logEl.innerHTML = `<span id="first-log" class="inf">Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0</span>`
         saveState();
     });

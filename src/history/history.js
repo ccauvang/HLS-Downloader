@@ -7,6 +7,8 @@ function formatTimestamp(iso) {
 }
 
 function getEls() {
+    // re-queried every call rather than cached — views.js rebuilds this DOM from scratch
+    // on each History tab open, so cached refs would go stale
     return {
         listEl: document.getElementById('list'),
         emptyEl: document.getElementById('empty'),
@@ -17,7 +19,7 @@ function getEls() {
 
 function render(entries) {
     const { listEl, emptyEl, countEl } = getEls();
-    if (!listEl) return;
+    if (!listEl) return; // view may have been switched away before an async op (delete, load) resolved
     listEl.innerHTML = '';
     if (!entries.length) {
         emptyEl.style.display = 'block';
@@ -37,6 +39,8 @@ function render(entries) {
             <button class="entry-delete" data-id="${id}" title="Delete">✕</button>
         `;
         div.querySelector('.entry-delete').addEventListener('click', async () => {
+            // re-read storage instead of trusting in-memory allEntries — guards against a stale
+            // delete if another view/tab wrote to history between render() and this click
             const { history = {} } = await chrome.storage.local.get('history');
             delete history[id];
             await chrome.storage.local.set({ history });
@@ -71,6 +75,8 @@ async function load() {
     const clearBtn = document.getElementById('clear-all-btn');
     if (clearBtn) {
         clearBtn.addEventListener('click', async () => {
+            // two-step confirm on the same button instead of a modal — cheaper UI, resets
+            // automatically after 3s so an accidental first click doesn't leave a stuck trap
             if (clearBtn.dataset.confirm !== 'yes') {
                 clearBtn.dataset.confirm = 'yes';
                 clearBtn.textContent = '⚠ Click again to confirm';
@@ -87,4 +93,6 @@ async function load() {
     }
 }
 
+// exposed on window so views.js can trigger a (re)load after injecting/rewiring this view,
+// since this script itself is only ever appended to the DOM once (see views.js historyScriptLoaded)
 window.hlsHistoryLoad = load;

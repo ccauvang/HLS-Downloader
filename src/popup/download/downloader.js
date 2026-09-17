@@ -10,7 +10,7 @@ import { downloadVideoSegments, downloadAudioSegments, verifySegments } from './
 import { mergeFmp4Fragments, writeConcatLists, remux, readAndCleanupOutput } from './mux.js';
 
 export async function runDownload() {
-    let _fsWriteChain = Promise.resolve();
+    let _fsWriteChain = Promise.resolve(); // serializes audio writeFile calls onto ffmpeg's FS — ffmpeg.wasm isn't safe for concurrent writeFile from parallel workers
     const CONCURRENCY = state.CONCURRENCY_SETTING;
     const raw = document.getElementById('links').value.trim();
     const links = raw.split('\n').map(l => l.trim()).filter(Boolean);
@@ -30,6 +30,8 @@ export async function runDownload() {
 
     try {
         // ── Pick save location ───────────────────────────────────────────
+        // ask for the save target up front, before any fetching — avoids downloading
+        // gigabytes of segments only to have the user cancel the file picker at the end
         const ext = state.dlFormat === 'ts' ? '.ts' : '.mp4';
         const baseName = filename.replace(/\.(mp4|ts)$/i, '');
         const fileHandle = await window.showSaveFilePicker({
@@ -44,6 +46,8 @@ export async function runDownload() {
         await loadFFmpeg();
 
         // ── Handle fMP4 init segment ─────────────────────────────────────
+        // fMP4 streams need their EXT-X-MAP init segment written before any media fragments —
+        // it carries the moov/track data the fragments reference, ffmpeg can't parse them without it
         if (window._hlsInitUrl) {
             log('fMP4 — fetching init…', 'inf');
             const initBuf = new Uint8Array(await fetchSegmentViaPage(window._hlsInitUrl, state.currentFrameId));
@@ -58,7 +62,7 @@ export async function runDownload() {
         log(`${links.length} segments. Downloading…`, 'fire');
 
         // ── Download segments → write to ffmpeg FS ───────────────────────
-        const segExt = window._hlsInitUrl ? '.mp4' : '.ts';
+        const segExt = window._hlsInitUrl ? '.mp4' : '.ts'; // fMP4 fragments keep .mp4 ext so ffmpeg/mux logic can tell format apart from raw TS
         const segNames = await downloadVideoSegments(links, segExt, CONCURRENCY, dlStart);
 
         if (state.cancelled) {
@@ -101,6 +105,8 @@ export async function runDownload() {
 
         if (state.dlFormat === 'ts' && !window._hlsInitUrl && !hasAudio) {
             // TS = raw concat in JS, skip ffmpeg entirely
+            // plain TS segments are already byte-concatenable — no container/timestamp work
+            // needed, so skip spinning up ffmpeg for the common "just glue files together" case
             log('Writing TS to disk…', 'inf');
             const writeToDiskStart = performance.now();
             let totalBytes = 0;
@@ -153,15 +159,15 @@ export async function runDownload() {
         await state.ffmpeg.deleteFile(outName).catch(() => { });
 
         setProgress(1, 1);
-        resetFfmpeg('inf');
+        resetFfmpeg('inf'); // fresh instance for next run rather than reusing — see resetFfmpeg's own comment for why
         resetUI();
 
     } catch (err) {
-        if (err.name === 'AbortError') { log('⚠ Save cancelled', 'err'); }
+        if (err.name === 'AbortError') { log('⚠ Save cancelled', 'err'); } // user closed the native save-file dialog — not a real error
         else { log(`❌ ${err?.message || String(err)}`, 'err'); }
         saveState();
         setProgress(1, 1);
-        resetFfmpeg('err');
+        resetFfmpeg('err'); // 'err' class here so any residual ffmpeg stderr noise from the failed run is visibly flagged, not logged as routine 'inf'
         resetUI();
     }
 }

@@ -12,10 +12,12 @@ export const state = {
     ffmpeg: null,
     hadCriticalFfmpegError: false,
     currentFrameId: 0,
-    chunkDelay: 300,
+    chunkDelay: 300,       // ms wait after each segment — throttle to dodge rate limits
     chunkDelayEnabled: true,
 };
 
+// snapshot of in-progress popup state, keyed per-tab so switching tabs doesn't clobber
+// another tab's unfinished download form — restored on popup reopen (see popup.js)
 export function saveState() {
     chrome.storage.session.set({
         [state.STATE_KEY]: {

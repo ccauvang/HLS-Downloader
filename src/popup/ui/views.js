@@ -6,6 +6,8 @@ let historyScriptLoaded = false;
 let settingsScriptLoaded = false;
 
 export async function preloadViews() {
+    // fetched once up front (popup load) rather than on first tab-click, so opening
+    // History/Settings the first time doesn't have a visible fetch-latency delay
     const [histRes, setRes] = await Promise.all([
         fetch(chrome.runtime.getURL('src/history/history.html')),
         fetch(chrome.runtime.getURL('src/settings/settings.html'))
@@ -43,6 +45,10 @@ export function showView(view) {
 
     if (view === 'main') return;
 
+    // NOTE: this rebuilds fresh DOM nodes from the cached HTML string every single open —
+    // it does NOT reuse/mutate whatever was here last time. history.js/settings.js must
+    // rewire their listeners on every open because of this (no "wired once" guard exists,
+    // or should exist, for that reason — bit us once already).
     const div = document.createElement('div');
     div.id = 'injected-view';
     div.innerHTML = view === 'history' ? historyBodyHTML : settingsBodyHTML;
@@ -56,6 +62,9 @@ export function wireViewButtons() {
     document.getElementById('history-btn').addEventListener('click', () => {
         if (!historyBodyHTML) return;
         showView('history');
+        // script tag itself only ever gets appended once per popup session (module-level
+        // flag) — but its init function still needs to be re-invoked on every open, since
+        // showView() just built brand new DOM for it to attach to
         if (!historyScriptLoaded) {
             const script = document.createElement('script');
             script.src = chrome.runtime.getURL('src/history/history.js');
