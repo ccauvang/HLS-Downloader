@@ -105,6 +105,22 @@ body {
     color: #e93434;
 }
 
+#chunk-delay-ms {
+    width: 40%;
+    background: #141414;
+    border: 1px solid #424141;
+    border-radius: 7px;
+    color: #ccc;
+    font-size: 12px;
+    padding: 8px 10px;
+    outline: none;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+#chunk-delay-ms:focus {
+    border-color: #e93434;
+}
+
 #save-btn {
     width: 100%;
     margin-top: 30px;

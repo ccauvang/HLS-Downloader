@@ -52,6 +52,16 @@
             </div>
         </div>
 
+        <div class="setting-group">
+            <label class="setting-label">Chunk Delay</label>
+            <p class="setting-desc">Wait time after each segment chuck downloaded (ms)</p>
+            <div class="row">
+                <input type="number" id="chunk-delay-ms" min="100" step="50" placeholder="300" />
+                <button id="chunk-delay-on" class="fmt-active">ON</button>
+                <button id="chunk-delay-off" class="fmt-inactive">OFF</button>
+            </div>
+        </div>
+
         <button id="save-btn">✔ Save Settings</button>
         <div id="saved-msg">Settings saved!</div>
     </div>

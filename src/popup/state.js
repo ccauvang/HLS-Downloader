@@ -11,7 +11,9 @@ export const state = {
     cancelled: false,
     ffmpeg: null,
     hadCriticalFfmpegError: false,
-    currentFrameId: 0
+    currentFrameId: 0,
+    chunkDelay: 300,
+    chunkDelayEnabled: true,
 };
 
 export function saveState() {

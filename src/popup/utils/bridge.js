@@ -24,7 +24,10 @@ export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries
             const id = Math.random().toString(36).slice(2);
             const timer = setTimeout(() => {
                 chrome.runtime.onMessage.removeListener(handler);
-                if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
+                if (n > 1) {
+                    log(`⚠ Retry seg… (${retries - n + 1})`, 'err');
+                    attempt(n - 1);
+                }
                 else reject(new Error(`Segment fetch timeout: ${url}`));
             }, timeoutMs);
             const handler = async (msg) => {
@@ -34,9 +37,12 @@ export function fetchSegmentViaPage(url, frameId = 0, timeoutMs = 60000, retries
                 if (msg.error) {
                     if (msg.status === 429) {
                         log(`⚠ Rate limited (429), backing off… ${url}`, 'err');
-                        await new Promise(r => setTimeout(r, 1500 * (retries - n + 1)));
+                        await new Promise(r => setTimeout(r, 5000 * (retries - n + 1)));
                     }
-                    if (n > 1) { log(`⚠ Retry seg… (${retries - n + 1})`, 'err'); attempt(n - 1); }
+                    if (n > 1) {
+                        log(`⚠ Retry seg… (${retries - n + 1})`, 'err');
+                        attempt(n - 1);
+                    }
                     else reject(new Error(msg.error));
                 } else {
                     const bin = atob(msg.b64);

@@ -1,19 +1,20 @@
-// settings.js — load/save extension options (chrome.storage.sync)
-// runs once per popup session; initSettings() reruns on every settings-tab open
-// but listenersWired guards against duplicate event bindings (same DOM, views.js reuses script)
+// runs once per popup session; initSettings() reruns on every settings-tab open.
+// views.js rebuilds the settings DOM from scratch on each open, so listeners
+// are rewired every call by design — no "wired once" guard (see chunk-delay fix history).
 
-const DEFAULTS = { filename: 'video', concurrency: 5, format: 'mp4', saveHistory: true };
+const DEFAULTS = { filename: 'video', concurrency: 5, format: 'mp4', saveHistory: true, chunkDelay: 300, chunkDelayEnabled: true };
+let chunkDelay = DEFAULTS.chunkDelay;
+let chunkDelayEnabled = DEFAULTS.chunkDelayEnabled;
 let concurrency = DEFAULTS.concurrency;
 let format = DEFAULTS.format;
 let saveHistory = DEFAULTS.saveHistory;
 let initial = null; // snapshot of saved values, used to detect unsaved changes
-let listenersWired = false; // prevent re-attaching listeners on repeat opens
 
 // current in-memory form state, used both to save and to diff against `initial`
 function currentValues() {
     return {
         filename: document.getElementById('default-filename').value.trim() || 'video',
-        concurrency, format, saveHistory
+        concurrency, format, saveHistory, chunkDelay, chunkDelayEnabled
     };
 }
 
@@ -28,9 +29,12 @@ function checkDirty() {
 function initSettings() {
     // load current settings from storage and paint UI to match
     chrome.storage.sync.get(DEFAULTS, (s) => {
+        if (!document.getElementById('chunk-delay-ms')) return;
         concurrency = s.concurrency;
         format = s.format;
         saveHistory = s.saveHistory;
+        chunkDelay = s.chunkDelay;
+        chunkDelayEnabled = s.chunkDelayEnabled;
         document.getElementById('default-filename').value = s.filename;
         document.querySelectorAll('.batch-btn').forEach(btn => {
             btn.classList.toggle('active', parseInt(btn.dataset.val) === concurrency);
@@ -40,15 +44,14 @@ function initSettings() {
         document.getElementById('settings-hist-on').className = saveHistory ? 'fmt-active' : 'fmt-inactive';
         document.getElementById('settings-hist-off').className = !saveHistory ? 'fmt-active' : 'fmt-inactive';
 
+        document.getElementById('chunk-delay-ms').value = chunkDelay;
+        document.getElementById('chunk-delay-on').className = chunkDelayEnabled ? 'fmt-active' : 'fmt-inactive';
+        document.getElementById('chunk-delay-off').className = !chunkDelayEnabled ? 'fmt-active' : 'fmt-inactive';
+
         // baseline for dirty-check — reset every time settings load
         initial = currentValues();
         document.getElementById('save-btn').disabled = true; // nothing changed yet
     });
-
-    // listeners only get wired once — DOM/script instance persists across
-    // settings-tab open/close within same popup session (see views.js)
-    if (listenersWired) return;
-    listenersWired = true;
 
     document.getElementById('default-filename').addEventListener('input', checkDirty);
 
@@ -90,10 +93,27 @@ function initSettings() {
         checkDirty();
     });
 
+    document.getElementById('chunk-delay-ms').addEventListener('input', (e) => {
+        chunkDelay = Math.max(0, parseInt(e.target.value) || 0);
+        checkDirty();
+    });
+    document.getElementById('chunk-delay-on').addEventListener('click', () => {
+        chunkDelayEnabled = true;
+        document.getElementById('chunk-delay-on').className = 'fmt-active';
+        document.getElementById('chunk-delay-off').className = 'fmt-inactive';
+        checkDirty();
+    });
+    document.getElementById('chunk-delay-off').addEventListener('click', () => {
+        chunkDelayEnabled = false;
+        document.getElementById('chunk-delay-off').className = 'fmt-active';
+        document.getElementById('chunk-delay-on').className = 'fmt-inactive';
+        checkDirty();
+    });
+
     // Persist to chrome.storage.sync, refresh baseline + disable save btn again
     document.getElementById('save-btn').addEventListener('click', () => {
         const filename = document.getElementById('default-filename').value.trim() || 'video';
-        chrome.storage.sync.set({ filename, concurrency, format, saveHistory }, () => {
+        chrome.storage.sync.set({ filename, concurrency, format, saveHistory, chunkDelay, chunkDelayEnabled }, () => {
             const msg = document.getElementById('saved-msg');
             msg.classList.add('show');
             setTimeout(() => msg.classList.remove('show'), 2000);

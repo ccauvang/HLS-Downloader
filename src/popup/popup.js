@@ -61,13 +61,16 @@ import { runDownload } from './download/downloader.js';
         chrome.runtime.sendMessage({ type: 'UNSET_ACTIVE_TAB', tabId: state.tab.id });
     });
 
-    const { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat } = await new Promise(r =>
-        chrome.storage.sync.get({ filename: 'video', concurrency: 5, format: 'mp4' }, r)
+    const { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat, chunkDelay, chunkDelayEnabled } = await new Promise(r =>
+        chrome.storage.sync.get({ filename: 'video', concurrency: 5, format: 'mp4', chunkDelay: 300, chunkDelayEnabled: true }, r)
     );
     state.CONCURRENCY_SETTING = CONCURRENCY_SETTING;
     state.defaultFilename = defaultFilename;
+    state.chunkDelay = chunkDelay;
+    state.chunkDelayEnabled = chunkDelayEnabled;
 
-    document.getElementById('first-log').textContent =
+    const firstLogEl = document.getElementById('first-log');
+    if (firstLogEl) firstLogEl.textContent =
         `Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0`;
 
     chrome.runtime.onMessage.addListener((msg) => {
@@ -79,8 +82,11 @@ import { runDownload } from './download/downloader.js';
             dom.btnMp4.className = state.dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             dom.btnTs.className = state.dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
         }
+        if (msg.changes.chunkDelay) state.chunkDelay = msg.changes.chunkDelay.newValue;
+        if (msg.changes.chunkDelayEnabled) state.chunkDelayEnabled = msg.changes.chunkDelayEnabled.newValue;
 
-        document.getElementById('first-log').textContent =
+        const firstLogEl = document.getElementById('first-log');
+        if (firstLogEl) firstLogEl.textContent =
             `Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0`;
     });
 
@@ -162,7 +168,7 @@ import { runDownload } from './download/downloader.js';
 
     // ── Log buttons ───────────────────────────────────────────────────────────
     document.getElementById('clear-log-btn').addEventListener('click', () => {
-        dom.logEl.innerHTML = `<span class="inf">Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0</span>`
+        dom.logEl.innerHTML = `<span id="first-log" class="inf">Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0</span>`
         saveState();
     });
 

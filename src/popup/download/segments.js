@@ -3,6 +3,8 @@ import { log } from '../utils/logger.js';
 import { fetchSegmentViaPage, decryptSegment } from '../utils/bridge.js';
 import { setProgress } from '../ui/progress.js';
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 function computeIv(i) {
     return window._hlsIv?.byteLength
         ? window._hlsIv
@@ -32,6 +34,7 @@ export async function downloadVideoSegments(links, segExt, CONCURRENCY, dlStart)
         if (done % CONCURRENCY === 0 || done === links.length) {
             log(`✔ segs ${done - (done % CONCURRENCY || CONCURRENCY) + 1}–${done}/${links.length}`, 'ok');
         }
+        if (state.chunkDelayEnabled && state.chunkDelay > 0 && vQueue.length > 0) await sleep(state.chunkDelay);
     });
     await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (vQueue.length) await vQueue.shift()(); }));
     log(`✔ ${links.length} segs done`, 'ok');
@@ -56,6 +59,7 @@ export async function downloadAudioSegments(audioUrls, segExt, CONCURRENCY, dlSt
         if (aDone % CONCURRENCY === 0 || aDone === audioUrls.length) {
             log(`✔ audio segs ${aDone - (aDone % CONCURRENCY || CONCURRENCY) + 1}–${aDone}/${audioUrls.length}`, 'ok');
         }
+        if (state.chunkDelayEnabled && state.chunkDelay > 0 && aQueue.length > 0) await sleep(state.chunkDelay);
     });
     await Promise.all(Array.from({ length: CONCURRENCY }, async () => { while (aQueue.length) await aQueue.shift()(); }));
     audioSegNames.push(...names.filter(Boolean));
