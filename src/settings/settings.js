@@ -2,7 +2,15 @@
 // views.js rebuilds the settings DOM from scratch on each open, so listeners
 // are rewired every call by design — no "wired once" guard (see chunk-delay fix history).
 
-const DEFAULTS = { filename: 'video', concurrency: 5, format: 'mp4', saveHistory: true, chunkDelay: 300, chunkDelayEnabled: true };
+const DEFAULTS = {
+    filename: 'video',
+    concurrency: 5,
+    format: 'mp4',
+    saveHistory: true,
+    chunkDelay: 300,
+    chunkDelayEnabled: true
+};
+
 let chunkDelay = DEFAULTS.chunkDelay;
 let chunkDelayEnabled = DEFAULTS.chunkDelayEnabled;
 let concurrency = DEFAULTS.concurrency;
