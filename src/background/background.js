@@ -177,8 +177,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // broadcast any sync-storage change (settings save, blacklist toggle) so open popups can live-update
 // without needing to re-poll storage themselves
+// blacklist can now change via modal/import too, not just TOGGLE_BLACKLIST msg
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
+    if (changes.blacklist) {
+        blacklistedHosts.clear();
+        (changes.blacklist.newValue || []).forEach(h => blacklistedHosts.add(h));
+    }
     chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', changes });
 });
 
