@@ -62,9 +62,44 @@
             </div>
         </div>
 
+        <div class="setting-group">
+            <label class="setting-label">Blacklist</label>
+            <p class="setting-desc">Sites where auto-detection is paused</p>
+            <button id="edit-blacklist-btn" class="bleximport-buttnon" style="flex:none;padding:8px 14px;">✎ Edit
+                Blacklist</button>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Backup</label>
+            <p class="setting-desc">Export or import settings + blacklist as a JSON file</p>
+            <div class="row">
+                <button id="export-btn" class="bleximport-buttnon">⬇ Export</button>
+                <button id="import-btn" class="bleximport-buttnon">⬆ Import</button>
+                <input type="file" id="import-file" accept="application/json" style="display:none" />
+            </div>
+        </div>
+
         <button id="save-btn">✔ Save Settings</button>
         <div id="saved-msg">Settings saved!</div>
+
+        <div id="bl-modal-overlay">
+            <div id="bl-modal">
+                <div id="bl-modal-header">
+                    <span>Edit Blacklist</span>
+                    <button id="bl-modal-close">✕</button>
+                </div>
+                <div class="row" style="margin:10px 0">
+                    <input type="text" id="bl-input" placeholder="example.com" />
+                    <button id="bl-add-btn" class="bleximport-buttnon" disabled>+ Add</button>
+                </div>
+                <div id="bl-count"></div>
+                <div id="bl-list"></div>
+                <div id="bl-empty">No blacklisted sites.</div>
+            </div>
+        </div>
     </div>
+
+
     <script src="settings.js"></script>
 </body>
 
