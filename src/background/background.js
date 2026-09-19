@@ -3,9 +3,15 @@
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener(() => { });
 
-const tabUrls = {};              // tabId -> detected m3u8/mpd URLs for that tab
+// tabUrls now lives in storage.session — was a plain object, wiped on SW restart, which could
+// leave the badge showing a stale count while a freshly-opened popup's GET_URLS came back empty
+
 const activePopupTabs = new Set(); // tabs with an open popup — used to scope detection noise
-const keyCache = new Map();      // url -> decryption key bytes, captured via hook.js XHR intercept
+// keyCache used to be a plain in-memory Map here — wiped on every SW restart (idle-kill can
+// happen any time, ~30s of no activity), which meant a key hook.js captured during playback
+// could vanish before the popup ever asked for it. Moved to chrome.storage.session: same
+// per-browser-session lifetime we actually want (gone on browser close, never touches disk),
+// but survives a SW restart in between. See GET_CACHED_KEY / HLS_KEY_CACHE_SET below.
 const pendingConfirm = new Map(); // tabId -> Set of "maybe HLS" urls already sent for content-sniff confirm (dedup)
 const blacklistedHosts = new Set(); // hostnames user paused detection on, mirrored from chrome.storage.sync
 const tabHostnames = {};         // tabId -> hostname, kept in sync via onUpdated so blacklist checks don't need async lookups
@@ -17,6 +23,25 @@ function hostFromUrl(url) {
     try { return new URL(url).hostname; } catch (e) { return null; } // malformed/non-http urls (data:, blob:, etc)
 }
 
+async function getTabUrls(tabId) {
+    const s = await chrome.storage.session.get('tabUrls');
+    return (s.tabUrls || {})[tabId] || [];
+}
+
+async function setTabUrls(tabId, urls) {
+    const s = await chrome.storage.session.get('tabUrls');
+    const all = s.tabUrls || {};
+    all[tabId] = urls;
+    await chrome.storage.session.set({ tabUrls: all });
+}
+
+async function deleteTabUrls(tabId) {
+    const s = await chrome.storage.session.get('tabUrls');
+    const all = s.tabUrls || {};
+    delete all[tabId];
+    await chrome.storage.session.set({ tabUrls: all });
+}
+
 function isHostBlacklisted(host) {
     return host ? blacklistedHosts.has(host) : false;
 }
@@ -25,14 +50,14 @@ function isTabBlacklisted(tabId) {
     return isHostBlacklisted(tabHostnames[tabId]);
 }
 
-function addUrl(tab, url, frameId = 0) {
-    if (tab < 0) return; // tabId -1 = request not tied to a real tab (extension/background requests)
-    if (!tabUrls[tab]) tabUrls[tab] = [];
-    if (!tabUrls[tab].find(e => e.url === url)) {
-        tabUrls[tab].push({ url, frameId });
-        chrome.action.setBadgeText({ text: String(tabUrls[tab].length), tabId: tab });
+async function addUrl(tab, url, frameId = 0) {
+    if (tab < 0) return;
+    const urls = await getTabUrls(tab);
+    if (!urls.find(e => e.url === url)) {
+        urls.push({ url, frameId });
+        await setTabUrls(tab, urls);
+        chrome.action.setBadgeText({ text: String(urls.length), tabId: tab });
         chrome.action.setBadgeBackgroundColor({ color: '#e93434', tabId: tab });
-        // only push live updates if a popup is actually open — no listener otherwise, so skip the noop send
         if (activePopupTabs.size > 0) {
             chrome.runtime.sendMessage({ type: 'HLS_DETECTED', url, frameId, tabId: tab }).catch(() => { });
         }
@@ -128,7 +153,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
     }
     if (msg.type === 'GET_URLS') {
-        sendResponse(tabUrls[msg.tabId] || []);
+        getTabUrls(msg.tabId).then(sendResponse);
         return true; // keep sendResponse channel open — required for sync-looking sendResponse in MV3
     }
     if (msg.type === 'SET_ACTIVE_TAB') {
@@ -146,13 +171,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
     }
     if (msg.type === 'HLS_KEY_CACHE_SET') {
-        // pushed from hook.js (MAIN world XHR/fetch intercept) whenever an hls-key request is seen
-        keyCache.set(msg.url, msg.bytes);
+        // pushed from hook.js (MAIN world XHR/fetch intercept) whenever an hls-key request is seen.
+        // read-modify-write against storage.session instead of a plain Map.set() — same
+        // read-modify-write shape as history-store.js's saveHistory(), needed because
+        // storage.session has no per-key merge, only whole-object set()
+        chrome.storage.session.get('keyCache', (s) => {
+            const cache = s.keyCache || {};
+            cache[msg.url] = msg.bytes;
+            chrome.storage.session.set({ keyCache: cache });
+        });
         return;
     }
     if (msg.type === 'GET_CACHED_KEY') {
-        sendResponse(keyCache.get(msg.url) || null);
-        return true;
+        chrome.storage.session.get('keyCache', (s) => {
+            const cache = s.keyCache || {};
+            sendResponse(cache[msg.url] || null);
+        });
+        return true; // async sendResponse — must return true here
     }
     if (msg.type === 'GET_BLACKLIST_STATUS') {
         sendResponse({ blacklisted: isTabBlacklisted(msg.tabId) });
@@ -190,10 +225,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') {
         // fresh navigation — wipe anything tied to the old page load so stale m3u8s/keys don't leak across navigations
-        delete tabUrls[tabId];
+        deleteTabUrls(tabId);
         pendingConfirm.delete(tabId);
         chrome.action.setBadgeText({ text: '', tabId });
-        keyCache.clear(); // global clear, not per-tab — acceptable tradeoff, keys are short-lived/single-use anyway
+        // global clear, not per-tab — acceptable tradeoff, keys are short-lived/single-use anyway.
+        // was keyCache.clear() on the in-memory Map — same intent, now storage-backed
+        chrome.storage.session.remove('keyCache');
     }
     if (changeInfo.url) {
         try { tabHostnames[tabId] = new URL(changeInfo.url).hostname; } catch (e) { }
@@ -211,4 +248,4 @@ chrome.action.onClicked.addListener((tab) => {
     });
 });
 
-chrome.tabs.onRemoved.addListener(tabId => delete tabUrls[tabId]);
+chrome.tabs.onRemoved.addListener(tabId => deleteTabUrls(tabId));

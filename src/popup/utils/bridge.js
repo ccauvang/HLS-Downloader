@@ -72,7 +72,7 @@ export async function fetchKey(keyUri, baseUrl) {
     // key must already be sitting in background.js's keyCache — hook.js (MAIN world) captures it
     // passively off the page's own request, we never re-fetch it ourselves (could 403/expire on retry)
     const bytes = await chrome.runtime.sendMessage({ type: 'GET_CACHED_KEY', url });
-    if (!bytes) throw new Error('Key not cached — reload page and retry before key expires');
+    if (!bytes) throw new Error('Key not cached — reload page and fetch the new URL to get the key');
     return new Uint8Array(bytes).buffer;
 }
 
