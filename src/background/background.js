@@ -46,10 +46,6 @@ function isHostBlacklisted(host) {
     return host ? blacklistedHosts.has(host) : false;
 }
 
-function isTabBlacklisted(tabId) {
-    return isHostBlacklisted(tabHostnames[tabId]);
-}
-
 async function addUrl(tab, url, frameId = 0) {
     if (tab < 0) return;
     const urls = await getTabUrls(tab);
@@ -188,10 +184,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse(cache[msg.url] || null);
         });
         return true; // async sendResponse — must return true here
-    }
-    if (msg.type === 'GET_BLACKLIST_STATUS') {
-        sendResponse({ blacklisted: isTabBlacklisted(msg.tabId) });
-        return true;
     }
     if (msg.type === 'TOGGLE_BLACKLIST') {
         // sync.get/set round-trip here (not the in-memory Set directly) — storage.sync is the

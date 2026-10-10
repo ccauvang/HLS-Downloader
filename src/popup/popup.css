@@ -46,6 +46,7 @@ body {
 }
 
 #blacklist-btn {
+    width: 125px;
     background: transparent;
     border: 1px solid #967500;
     border-radius: 5px;

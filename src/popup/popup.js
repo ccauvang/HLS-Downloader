@@ -27,8 +27,11 @@ import { runDownload } from './download/downloader.js';
     document.getElementById('site-url-label').textContent = siteHost;
 
     const blBtn = document.getElementById('blacklist-btn');
-    chrome.runtime.sendMessage({ type: 'GET_BLACKLIST_STATUS', tabId: state.tab.id }, (res) => {
-        if (res?.blacklisted) {
+
+    // read storage directly with siteHost — background's tabHostnames is empty after extension reload,
+    // so asking it by tabId returns false until SET_ACTIVE_TAB backfills
+    chrome.storage.sync.get({ blacklist: [] }, (s) => {
+        if (s.blacklist.includes(siteHost)) {
             blBtn.classList.add('active');
             blBtn.textContent = 'Resume detection';
         }
@@ -37,7 +40,7 @@ import { runDownload } from './download/downloader.js';
     blBtn.addEventListener('click', () => {
         chrome.runtime.sendMessage({ type: 'TOGGLE_BLACKLIST', host: siteHost }, (res) => {
             blBtn.classList.toggle('active', res.blacklisted);
-            blBtn.textContent = res.blacklisted ? 'Resume detection' : 'Pause detection here';
+            blBtn.textContent = res.blacklisted ? 'Resume detection' : 'Pause detection';
         });
     });
 
@@ -57,6 +60,14 @@ import { runDownload } from './download/downloader.js';
 
     document.getElementById('links').addEventListener('input', saveState);
     document.getElementById('filename').addEventListener('input', saveState);
+
+    // blank on blur → put settings default back (blur not input, else can't clear field to retype)
+    document.getElementById('filename').addEventListener('blur', (e) => {
+        if (!e.target.value.trim()) {
+            e.target.value = state.defaultFilename;
+            saveState();
+        }
+    });
 
     // background only pushes live HLS_DETECTED updates to tabs it knows have a popup open —
     // this pair marks the window so background.js's activePopupTabs check includes us
@@ -90,6 +101,7 @@ import { runDownload } from './download/downloader.js';
         }
         if (msg.changes.chunkDelay) state.chunkDelay = msg.changes.chunkDelay.newValue;
         if (msg.changes.chunkDelayEnabled) state.chunkDelayEnabled = msg.changes.chunkDelayEnabled.newValue;
+        if (msg.changes.filename) state.defaultFilename = msg.changes.filename.newValue;
 
         const firstLogEl = document.getElementById('first-log');
         if (firstLogEl) firstLogEl.textContent =
