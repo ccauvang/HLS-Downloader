@@ -20,6 +20,9 @@ function getEls() {
 function render(entries) {
     const { listEl, emptyEl, countEl } = getEls();
     if (!listEl) return; // view may have been switched away before an async op (delete, load) resolved
+    // use allEntries, not `entries` — entries is the search-filtered list and would hide the button on a zero-match search
+    const clearBtn = document.getElementById('clear-all-btn');
+    if (clearBtn) clearBtn.style.display = allEntries.length ? '' : 'none';
     listEl.innerHTML = '';
     if (!entries.length) {
         emptyEl.style.display = 'block';

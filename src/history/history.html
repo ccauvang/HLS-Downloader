@@ -8,17 +8,23 @@
 </head>
 
 <body>
-    <div id="header">
-        <span id="header-title">HLS DOWNLOADER</span>
-        <span id="header-sub">History</span>
-    </div>
     <div id="body">
-        <input type="text" id="search" placeholder="Search filename or URL…" />
-        <div id="count"></div>
-        <div id="list"></div>
-        <div id="empty">No downloads yet.</div>
-        <div style="display:flex;justify-content:flex-end;margin-top:8px">
-            <button id="clear-all-btn" title="Clear All">🗑 Clear All</button>
+        <span id="header-sub">History</span>
+        <div id="history-view">
+            <div id="search-wrap">
+                <svg id="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M20 20l-3.5-3.5" />
+                </svg>
+                <input type="text" id="search" placeholder="Search filename or URL…" />
+            </div>
+            <div id="list-head">
+                <div id="count"></div>
+                <button id="clear-all-btn" title="Clear all history">🗑 Clear All</button>
+            </div>
+            <div id="list"></div>
+            <div id="empty">No downloads yet.</div>
         </div>
     </div>
     <script src="history.js"></script>

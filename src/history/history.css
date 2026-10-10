@@ -1,73 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap');
+/* Only the injected #body innerHTML from history.html reaches the popup (see views.js).
+   popup.css already owns the font import, * reset, html/body, #header and #body,
+   so none of that is repeated here. */
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-body {
-    width: 100%;
-    min-height: 700px;
-    background: #1A1D1E;
-    color: #e0e0e0;
-    font-family: 'Inter', system-ui, sans-serif;
-}
-
-#header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 11px 14px;
-    background: #3d0000;
-    border-bottom: 1px solid #222;
-}
-
-#header-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #e93434;
-    letter-spacing: 1px;
+/* hides the popup's own scrollbar once this stylesheet is preloaded — intentional */
+body::-webkit-scrollbar {
+    display: none;
 }
 
 #header-sub {
-    font-size: 12px;
-    color: #888;
-    margin-top: 2px;
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
 }
 
-#header-btns {
-    margin-left: auto;
-}
-
-#clear-all-btn {
-    position: fixed;
-    bottom: 12px;
-    right: 12px;
-    background: #3d0000;
-    border: 1px solid #e93434;
-    border-radius: 6px;
-    color: #e93434;
-    font-size: 12px;
-    padding: 6px 12px;
-    cursor: pointer;
-    z-index: 99;
-}
-
-#clear-all-btn:hover {
-    background: #e93434;
-    color: #f2f0ed;
-}
-
-#body {
-    padding: 12px;
+/* wrapper travels with the injected innerHTML, so the gap actually applies in the popup */
+#history-view {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
+    margin-top: 20px;
 }
 
-body::-webkit-scrollbar {
-    display: none;
+/* ── Search ─────────────────────────────────────────────── */
+#search-wrap {
+    position: relative;
+}
+
+#search-icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #666;
+    pointer-events: none;
+    transition: color .15s;
+}
+
+#search-wrap:focus-within #search-icon {
+    color: #e93434;
 }
 
 #search {
@@ -77,7 +48,7 @@ body::-webkit-scrollbar {
     border-radius: 7px;
     color: #ccc;
     font-size: 12px;
-    padding: 8px 10px;
+    padding: 9px 10px 9px 34px; /* left room for icon */
     outline: none;
     font-family: 'Inter', sans-serif;
 }
@@ -86,12 +57,43 @@ body::-webkit-scrollbar {
     border-color: #e93434;
 }
 
+/* ── Count + Clear All row ──────────────────────────────── */
+#list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 #count {
-    margin: 5px;
-    font-size: 15px;
+    font-size: 13px;
     color: #51f45e;
 }
 
+#clear-all-btn {
+    background: transparent;
+    border: 1px solid #5a1a1a;
+    border-radius: 6px;
+    color: #c05050;
+    font-size: 11px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all .15s;
+}
+
+#clear-all-btn:hover {
+    border-color: #e93434;
+    color: #e93434;
+    background: #1f0000;
+}
+
+/* history.js sets data-confirm="yes" on first click — styles the "click again" state */
+#clear-all-btn[data-confirm="yes"] {
+    background: #e93434;
+    border-color: #e93434;
+    color: #f2f0ed;
+}
+
+/* ── List + cards ───────────────────────────────────────── */
 #list {
     display: flex;
     flex-direction: column;
@@ -110,10 +112,10 @@ body::-webkit-scrollbar {
     background: #141414;
     border: 1px solid #252525;
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     position: relative;
 }
 
@@ -126,7 +128,7 @@ body::-webkit-scrollbar {
     font-weight: 700;
     color: #e0e0e0;
     font-family: 'JetBrains Mono', monospace;
-    padding-right: 24px;
+    padding-right: 24px; /* keeps long names clear of the delete button */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
