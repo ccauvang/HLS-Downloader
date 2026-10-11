@@ -1,8 +1,9 @@
 (function () {
     'use strict';
 
-    // grab the real fetch before hook.js/page scripts get a chance to wrap it further —
-    // this is what PROXY_FETCH/PROXY_SEGMENT use to bypass our own override below
+    // used by PROXY_FETCH / PROXY_SEGMENT / CONFIRM_HLS_CANDIDATE below.
+    // this is the isolated world: overriding window.fetch/XHR here would NOT touch the page's own calls
+    // (that needs MAIN world, see hook.js) — detection comes from background.js webRequest instead
     const _origFetch = window.fetch.bind(window);
 
     function safeSend(msg) {
@@ -10,14 +11,16 @@
         try { chrome.runtime.sendMessage(msg); } catch (e) { }
     }
 
+    // <video src> can be a plain mp4/webm. background counts every HLS_DETECTED toward the badge and the popup
+    // lists it too, so non-HLS media must be filtered here, at the source
+    const NON_HLS_SRC = /\.(mp4|webm|m4s|m4v|mkv|mov|ts|aac|mp3|ogg)(\?|#|$)/i;
+    function sendVideoSrc(src) {
+        if (src && src.startsWith('http') && !NON_HLS_SRC.test(src)) safeSend({ type: 'HLS_DETECTED', url: src });
+    }
+
     function scanVideoTags() {
         // catches streams already sitting in the DOM on load (no network hook would fire for these)
-        document.querySelectorAll('video, source').forEach(el => {
-            const src = el.src || el.getAttribute('src') || '';
-            if (src && src.startsWith('http')) {
-                safeSend({ type: 'HLS_DETECTED', url: src });
-            }
-        });
+        document.querySelectorAll('video, source').forEach(el => sendVideoSrc(el.src || el.getAttribute('src') || ''));
     }
 
     function bufToB64(buf) {
@@ -35,62 +38,6 @@
         if (event.source !== window || event.data?.type !== 'HLS_KEY_CAPTURED') return;
         chrome.runtime.sendMessage({ type: 'HLS_KEY_CACHE_SET', url: event.data.url, bytes: event.data.bytes });
     });
-
-    window.fetch = async function (...args) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-        if (url.includes('.m3u8')) {
-            safeSend({ type: 'HLS_DETECTED', url });
-            return _origFetch(...args);
-        }
-        const res = await _origFetch(...args);
-        try {
-            const ct = res.headers.get('content-type') || '';
-            if (ct.includes('mpegurl') || ct.includes('apple.mpegurl')) {
-                safeSend({ type: 'HLS_DETECTED', url });
-                return res;
-            }
-            // some servers mislabel content-type — fall back to sniffing the actual playlist header.
-            // res.clone() needed since body streams can only be read once and the caller still needs it.
-            const clone = res.clone();
-            const text = await clone.text();
-            if (text.trimStart().startsWith('#EXTM3U')) {
-                safeSend({ type: 'HLS_DETECTED', url });
-            }
-        } catch (e) { }
-        return res;
-    };
-
-    const _origOpen = XMLHttpRequest.prototype.open;
-    const _origSend = XMLHttpRequest.prototype.send;
-
-    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-        this._url = url; // stash for .send() to read, since url isn't otherwise available there
-        return _origOpen.call(this, method, url, ...rest);
-    };
-
-    XMLHttpRequest.prototype.send = function (...args) {
-        if (this._url) {
-            if (this._url.includes('.m3u8')) {
-                safeSend({ type: 'HLS_DETECTED', url: this._url });
-            } else {
-                this.addEventListener('load', function () {
-                    try {
-                        const ct = this.getResponseHeader('content-type') || '';
-                        if (ct.includes('mpegurl') || ct.includes('apple.mpegurl')) {
-                            safeSend({ type: 'HLS_DETECTED', url: this._url });
-                            return;
-                        }
-                        // same mislabeled-content-type fallback as the fetch hook above
-                        const text = typeof this.responseText === 'string' ? this.responseText : '';
-                        if (text.trimStart().startsWith('#EXTM3U')) {
-                            safeSend({ type: 'HLS_DETECTED', url: this._url });
-                        }
-                    } catch (e) { }
-                });
-            }
-        }
-        return _origSend.call(this, ...args);
-    };
 
     // popup.js can't fetch page URLs directly (CORS/session/cookie context lives on the page,
     // not the extension) — so it asks this content script to fetch on its behalf via background relay
@@ -150,15 +97,9 @@
             for (const node of mut.addedNodes) {
                 if (node.nodeType !== 1) continue;
                 const tag = node.tagName?.toLowerCase();
-                if (tag === 'video' || tag === 'source') {
-                    const src = node.src || node.getAttribute('src') || '';
-                    if (src && src.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: src });
-                }
+                if (tag === 'video' || tag === 'source') sendVideoSrc(node.src || node.getAttribute('src') || '');
                 // check children
-                node.querySelectorAll?.('video, source').forEach(el => {
-                    const s = el.src || el.getAttribute('src') || '';
-                    if (s && s.startsWith('http')) safeSend({ type: 'HLS_DETECTED', url: s });
-                });
+                node.querySelectorAll?.('video, source').forEach(el => sendVideoSrc(el.src || el.getAttribute('src') || ''));
             }
         }
     });

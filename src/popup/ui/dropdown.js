@@ -11,11 +11,13 @@ export function updateDropdown() {
         return;
     }
 
+    // box text only changes on pick or when empty — without this it keeps saying "no streams detected yet" after streams arrive
+    if (!state.m3u8Value) dom.m3u8Selected.textContent = `— select a stream (${state.detectedM3u8.length}) —`;
+
     state.detectedM3u8.forEach((entry, i) => {
-        // entries start as plain url strings (raw detection) and get upgraded to
-        // {url, label, frameId, ...} once detectStreamInfo() resolves — handle both shapes here
-        const url = typeof entry === 'string' ? entry : entry.url;
-        const label = typeof entry === 'string' ? '' : ` — ${entry.label}`;
+        // always objects: bare {url, frameId} from background, upgraded to {url, label, ...} once detectStreamInfo() resolves
+        const url = entry.url;
+        const label = entry.label ? ` — ${entry.label}` : '';
         const shortUrl = url.length > 35 ? url.slice(0, 35) + '...' : url;
         const opt = document.createElement('div');
         opt.className = 'custom-option';

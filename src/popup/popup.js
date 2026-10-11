@@ -1,5 +1,5 @@
 import { dom } from './dom.js';
-import { state, saveState } from './state.js';
+import { state, saveState, pageKey } from './state.js';
 import { log } from './utils/logger.js';
 import { detectStreamInfo } from './utils/m3u8.js';
 import { updateDropdown, wireDropdown } from './ui/dropdown.js';
@@ -21,20 +21,23 @@ import { runDownload } from './download/downloader.js';
     const params = new URLSearchParams(window.location.search);
     state.tab = await chrome.tabs.get(parseInt(params.get('tabId')));
     state.STATE_KEY = `state_${state.tab.id}`;
-    const siteHost = new URL(state.tab.url).hostname;
-
-    document.getElementById('site-url-label').textContent = siteHost;
-
     const blBtn = document.getElementById('blacklist-btn');
+    let siteHost = '';
+    let curPage = pageKey(state.tab.url); // onUpdated below compares against this to tell "moved to another page" from "same page reloaded"
 
+    // host label + blacklist button follow state.tab — runs on open and again whenever the tab navigates.
     // read storage directly with siteHost — background's tabHostnames is empty after extension reload,
     // so asking it by tabId returns false until SET_ACTIVE_TAB backfills
-    chrome.storage.sync.get({ blacklist: [] }, (s) => {
-        if (s.blacklist.includes(siteHost)) {
-            blBtn.classList.add('active');
-            blBtn.textContent = 'Resume detection';
-        }
-    });
+    function syncSite() {
+        try { siteHost = new URL(state.tab.url).hostname; } catch (e) { siteHost = ''; }
+        document.getElementById('site-url-label').textContent = siteHost;
+        chrome.storage.sync.get({ blacklist: [] }, (s) => {
+            const on = s.blacklist.includes(siteHost);
+            blBtn.classList.toggle('active', on);
+            blBtn.textContent = on ? 'Resume detection' : 'Pause detection';
+        });
+    }
+    syncSite();
 
     blBtn.addEventListener('click', () => {
         chrome.runtime.sendMessage({ type: 'TOGGLE_BLACKLIST', host: siteHost }, (res) => {
@@ -52,7 +55,9 @@ import { runDownload } from './download/downloader.js';
             const entry = state.detectedM3u8[i];
             if (typeof entry !== 'object' || entry.isMaster !== undefined) continue; // already rich or malformed
             const info = await detectStreamInfo(entry.url, entry.frameId).catch(() => null);
-            if (info) state.detectedM3u8[i] = { ...info, frameId: entry.frameId };
+            // list may have been cleared (reload) or the slot replaced while we awaited — writing by index
+            // then leaves holes, and `.length` (the "Detected streams (N)" count) counts the holes
+            if (info && state.detectedM3u8[i] === entry) state.detectedM3u8[i] = { ...info, frameId: entry.frameId };
             updateDropdown();
         }
     })();
@@ -109,30 +114,50 @@ import { runDownload } from './download/downloader.js';
 
     updateDropdown();
 
+    // bumped on every page load — lets late async results know their page is gone
+    let loadGen = 0;
+
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type !== 'HLS_DETECTED') return;
         if (msg.tabId !== state.tab.id) return;
         if (state.detectedM3u8.find(e => e.url === msg.url)) return;
-        detectStreamInfo(msg.url, msg.frameId).then(info => {
-            if (!info) return;
-            if (!state.detectedM3u8.find(e => e.url === info.url)) {
-                state.detectedM3u8.push({ ...info, frameId: msg.frameId });
-                updateDropdown();
-            }
-        }).catch(() => {
-            // detectStreamInfo failed (fetch error, malformed playlist, etc) — still record
-            // the bare url so it's selectable, just without the rich label
-            state.detectedM3u8.push({ url: msg.url, frameId: msg.frameId });
+        const gen = loadGen;
+        detectStreamInfo(msg.url, msg.frameId).catch(() => null).then(info => {
+            if (gen !== loadGen) return; // page reloaded while this was pending — don't push the old page's stream
+            if (state.detectedM3u8.find(e => e.url === msg.url)) return;
+            // null = fetch failed or body isn't #EXTM3U. still push the bare url: background already counted it
+            // toward the badge, so dropping it here is what made badge and list disagree
+            state.detectedM3u8.push(info ? { ...info, frameId: msg.frameId } : { url: msg.url, frameId: msg.frameId });
             updateDropdown();
         });
     });
 
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    // holds the old page's stream — cleared only on a real page change, not a plain reload
+    function clearStreamFields() {
+        document.getElementById('m3u8-url').value = '';
+        document.getElementById('links').value = '';
+        state.currentFrameId = 0;
+        window._hlsKey = null; window._hlsIv = null; window._hlsHasKey = false;
+        window._hlsInitUrl = null; window._hlsAudioInitUrl = null; window._hlsAudioSegments = null;
+    }
+
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         if (tabId !== state.tab.id) return;
+        // state.tab is a snapshot from popup open — refresh it, or history siteUrl / saveState / log
+        // keep reporting the page the tab used to be on
+        if (changeInfo.url || changeInfo.status) state.tab = tab;
         if (changeInfo.status === 'loading') {
+            loadGen++;
             // page navigated — old detected streams belong to a page that's gone now
             state.detectedM3u8.length = 0;
             updateDropdown();
+        }
+        // status only (loading/complete), so a player rewriting the url (?t=30) isn't treated as a new page
+        if (changeInfo.status && pageKey(state.tab.url) !== curPage) {
+            curPage = pageKey(state.tab.url);
+            syncSite();
+            // mid-download the run reads these live — leave them alone
+            if (!dom.startBtn.disabled) { clearStreamFields(); saveState(); }
         }
     });
 
@@ -142,7 +167,10 @@ import { runDownload } from './download/downloader.js';
 
     chrome.storage.session.get(state.STATE_KEY, (s) => {
         const saved = s[state.STATE_KEY];
-        if (!saved) {
+        // saved state is keyed by tabId only — if the tab moved to another page while the popup was closed,
+        // restoring would bring back the old page's m3u8 / links / dropdown entries
+        if (!saved || saved.pageUrl !== pageKey(state.tab.url)) {
+            if (saved) chrome.storage.session.remove(state.STATE_KEY);
             document.getElementById('filename').value = state.defaultFilename;
             return;
         }
@@ -157,11 +185,13 @@ import { runDownload } from './download/downloader.js';
         }
 
         if (saved.detectedM3u8?.length) {
+            // background's list is the truth — saved entries may only upgrade ones it still has (keeps cachedText
+            // for tokenized playlists), never add. pushing here is how streams from before a reload came back
             saved.detectedM3u8.forEach(e => {
-                const url = typeof e === 'string' ? e : e.url;
-                const idx = state.detectedM3u8.findIndex(x => (typeof x === 'string' ? x : x.url) === url);
-                if (idx === -1) state.detectedM3u8.push(e);
-                else if (typeof e === 'object' && typeof state.detectedM3u8[idx] === 'string') state.detectedM3u8[idx] = e; // upgrade string → rich
+                if (typeof e !== 'object' || e.isMaster === undefined) return; // only rich entries are worth restoring
+                const idx = state.detectedM3u8.findIndex(x => x.url === e.url);
+                if (idx !== -1 && state.detectedM3u8[idx].isMaster === undefined)
+                    state.detectedM3u8[idx] = { ...e, frameId: state.detectedM3u8[idx].frameId };
             });
             updateDropdown();
         }
@@ -227,7 +257,7 @@ import { runDownload } from './download/downloader.js';
     dom.startBtn.addEventListener('click', runDownload);
 
     // ── Cancel Download ────────────────────────────────────────────
-        dom.cancelBtn.addEventListener('click', () => {
+    dom.cancelBtn.addEventListener('click', () => {
         if (state.cancelled) return;
         state.cancelled = true;
         dom.cancelBtn.disabled = true;

@@ -16,6 +16,9 @@ export const state = {
     chunkDelayEnabled: true,
 };
 
+// page identity for saved-state matching — hash stripped so #anchor jumps don't count as a new page
+export function pageKey(url) { return (url || '').split('#')[0]; }
+
 // snapshot of in-progress popup state, keyed per-tab so switching tabs doesn't clobber
 // another tab's unfinished download form — restored on popup reopen (see popup.js)
 export function saveState() {
@@ -26,7 +29,8 @@ export function saveState() {
             m3u8Url: document.getElementById('m3u8-url').value,
             logHtml: document.getElementById('log').innerHTML,
             dlFormat: state.dlFormat,
-            detectedM3u8: state.detectedM3u8
+            pageUrl: pageKey(state.tab.url),
+            detectedM3u8: state.detectedM3u8,
         }
     });
 }
