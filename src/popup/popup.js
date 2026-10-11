@@ -4,7 +4,6 @@ import { log } from './utils/logger.js';
 import { detectStreamInfo } from './utils/m3u8.js';
 import { updateDropdown, wireDropdown } from './ui/dropdown.js';
 import { preloadViews, wireViewButtons } from './ui/views.js';
-import { resetUI } from './ui/progress.js';
 import { createFfmpeg, loadFFmpeg } from './ffmpeg/engine.js';
 import { parseStream } from './download/parse.js';
 import { runDownload } from './download/downloader.js';
@@ -94,7 +93,7 @@ import { runDownload } from './download/downloader.js';
         if (msg.type !== 'SETTINGS_UPDATED') return;
         const { concurrency, format } = msg.changes;
         if (concurrency) state.CONCURRENCY_SETTING = concurrency.newValue;
-        if (format) {
+        if (format && !dom.startBtn.disabled) {
             state.dlFormat = format.newValue;
             dom.btnMp4.className = state.dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             dom.btnTs.className = state.dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
@@ -228,8 +227,13 @@ import { runDownload } from './download/downloader.js';
     dom.startBtn.addEventListener('click', runDownload);
 
     // ── Cancel Download ────────────────────────────────────────────
-    dom.cancelBtn.addEventListener('click', () => {
-        if (!state.cancelled) { state.cancelled = true; log('⚠ Cancelled', 'err'); resetUI(); }
+        dom.cancelBtn.addEventListener('click', () => {
+        if (state.cancelled) return;
+        state.cancelled = true;
+        dom.cancelBtn.disabled = true;
+        // no resetUI() here on purpose — Start stays locked until runDownload winds down on its own.
+        // unlocking now lets a new run reset state.cancelled while old workers are still draining
+        log('⚠ Cancelling… waiting for in-flight segments', 'err');
     });
 
 })();

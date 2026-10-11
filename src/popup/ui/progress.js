@@ -39,7 +39,16 @@ export function setProgress(v, total, startTime, bytesDone) {
     }
 }
 
+// locks everything that rewrites state a running download reads live:
+// window._hls* (parse), state.currentFrameId (dropdown), state.dlFormat (fmt btns), page reload
+export function lockInputs(on) {
+    for (const id of ['reload-btn', 'parse-btn', 'm3u8-url', 'fmt-mp4', 'fmt-ts'])
+        document.getElementById(id).disabled = on;
+    dom.m3u8SelectEl.classList.toggle('locked', on); // custom div select has no native disabled
+}
+
 export function resetUI() {
     dom.startBtn.disabled = false;
     dom.cancelBtn.disabled = true;
+    lockInputs(false); // replaces the old dom.reloadBtn.disabled = false line
 }

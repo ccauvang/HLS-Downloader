@@ -136,6 +136,13 @@ body {
     border-color: #e93434;
 }
 
+#m3u8-url:disabled,
+.fmt-active:disabled,
+.fmt-inactive:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
 .custom-select {
     flex: 1;
     min-width: 0;
@@ -152,6 +159,11 @@ body {
 .custom-select.open {
     border-color: #e93434;
     border-radius: 7px 7px 0 0;
+}
+
+.custom-select.locked {
+    opacity: .45;
+    pointer-events: none;
 }
 
 #m3u8-selected {
@@ -307,6 +319,13 @@ textarea:focus {
     color: #f2f0ed;
 }
 
+#reload-btn:disabled {
+    background: #252525;
+    color: #4B4B4B;
+    border: 1px solid #434343;
+    cursor: not-allowed;
+}
+
 #parse-btn {
     background: #003e1c;
     color: #3DAD66;
@@ -321,6 +340,13 @@ textarea:focus {
 #parse-btn:hover {
     background: #3DAD66;
     color: #f2f0ed;
+}
+
+#parse-btn:disabled {
+    background: #252525;
+    color: #4B4B4B;
+    border: 1px solid #434343;
+    cursor: not-allowed;
 }
 
 #start-btn {

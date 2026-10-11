@@ -3,7 +3,7 @@ import { state, saveState } from '../state.js';
 import { log } from '../utils/logger.js';
 import { fetchSegmentViaPage } from '../utils/bridge.js';
 import { formatBytes, formatDuration } from '../utils/format.js';
-import { setProgress, resetUI } from '../ui/progress.js';
+import { setProgress, resetUI, lockInputs } from '../ui/progress.js';
 import { saveHistory } from '../store/history-store.js';
 import { loadFFmpeg, resetFfmpeg } from '../ffmpeg/engine.js';
 import { downloadVideoSegments, downloadAudioSegments, verifySegments } from './segments.js';
@@ -34,7 +34,10 @@ export async function runDownload() {
     }
 
     const filename = document.getElementById('filename').value.trim() || 'video.mp4';
-    dom.startBtn.disabled = true; state.cancelled = false; dom.cancelBtn.disabled = false;
+    dom.startBtn.disabled = true;
+    state.cancelled = false;
+    dom.cancelBtn.disabled = false;
+    lockInputs(true);
     log('─────────────────────', 'fire');
     dom.barEl.style.width = '0%';
     dom.percentEl.textContent = '0%';
@@ -80,7 +83,10 @@ export async function runDownload() {
         if (state.cancelled) {
             await writable.abort();
             for (const n of segNames) await state.ffmpeg.deleteFile(n).catch(() => { });
-            setProgress(0, links.length); resetUI(); return;
+            log('⚠ Cancelled', 'err');
+            setProgress(0, links.length);
+            resetUI();
+            return;
         }
 
         // ── Download audio segments → ffmpeg FS ─────────────────────────
@@ -97,8 +103,15 @@ export async function runDownload() {
         if (state.cancelled) {
             await writable.abort();
             for (const n of [...segNames, ...audioSegNames]) await state.ffmpeg.deleteFile(n).catch(() => { });
-            setProgress(0, links.length); resetUI(); return;
+            log('⚠ Cancelled', 'err');
+            setProgress(0, links.length);
+            resetUI();
+            return;
         }
+
+        // last cancel check is behind us — verify/merge/remux/save can't be interrupted,
+        // so a cancel from here would only log "cancelling" while the file still gets saved
+        dom.cancelBtn.disabled = true;
 
         await verifySegments(segNames, links, writeFileSerial);
 
