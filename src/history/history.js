@@ -31,17 +31,39 @@ function render(entries) {
     }
     emptyEl.style.display = 'none';
     countEl.textContent = `${entries.length} download${entries.length !== 1 ? 's' : ''}`;
-    entries.forEach(({ id, filename, infoFile, siteUrl, timestamp }) => {
+    entries.forEach(({ id, filename, infoFile, dlStats, siteUrl, timestamp }) => {
         const div = document.createElement('div');
+
         div.className = 'entry';
         div.innerHTML = `
-            <div class="entry-filename">${filename}</div>
-            <div class="entry-info">${infoFile}</div>
-            <a class="entry-url" href="${siteUrl}" target="_blank" title="${siteUrl}">${siteUrl}</a>
-            <div class="entry-time">${formatTimestamp(timestamp)}</div>
-            <button class="entry-delete" data-id="${id}" title="Delete">✕</button>
+        <div class="entry-filename">${filename}</div>
+        <div class="entry-info">${infoFile}</div>
+        ${dlStats ? `<div class="entry-stats">${dlStats}</div>` : ''}
+        <a class="entry-url" href="${siteUrl}" target="_blank" title="${siteUrl}">${siteUrl}</a>
+        <div class="entry-time">${formatTimestamp(timestamp)}</div>
+        <button class="entry-delete" data-id="${id}" title="Delete">✕</button>
         `;
-        div.querySelector('.entry-delete').addEventListener('click', async () => {
+
+        const delBtn = div.querySelector('.entry-delete');
+        let delStep = 0; // per-card closure — render() rebuilds cards, so every new card starts at 0
+        let delTimer;
+
+        delBtn.addEventListener('click', async () => {
+            // 3 clicks: ✕ → 1 → 2 → delete. each click re-arms the 3s reset,
+            // so a stray click doesn't leave the card half-armed forever
+            if (delStep < 2) {
+                delStep++;
+                delBtn.textContent = String(delStep);
+                delBtn.dataset.step = String(delStep);
+                clearTimeout(delTimer);
+                delTimer = setTimeout(() => {
+                    delStep = 0;
+                    delBtn.textContent = '✕';
+                    delBtn.dataset.step = '';
+                }, 3000);
+                return;
+            }
+            clearTimeout(delTimer);
             // re-read storage instead of trusting in-memory allEntries — guards against a stale
             // delete if another view/tab wrote to history between render() and this click
             const { history = {} } = await chrome.storage.local.get('history');

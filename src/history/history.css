@@ -48,7 +48,8 @@ body::-webkit-scrollbar {
     border-radius: 7px;
     color: #ccc;
     font-size: 12px;
-    padding: 9px 10px 9px 34px; /* left room for icon */
+    padding: 9px 10px 9px 34px;
+    /* left room for icon */
     outline: none;
     font-family: 'Inter', sans-serif;
 }
@@ -128,7 +129,8 @@ body::-webkit-scrollbar {
     font-weight: 700;
     color: #e0e0e0;
     font-family: 'JetBrains Mono', monospace;
-    padding-right: 24px; /* keeps long names clear of the delete button */
+    padding-right: 24px;
+    /* keeps long names clear of the delete button */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -137,6 +139,12 @@ body::-webkit-scrollbar {
 .entry-info {
     font-size: 11px;
     color: #3DAD66;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.entry-stats {
+    font-size: 11px;
+    color: #5fb3c9;
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -163,6 +171,7 @@ body::-webkit-scrollbar {
     position: absolute;
     top: 8px;
     right: 8px;
+    min-width: 24px;
     background: transparent;
     border: none;
     color: #444;
@@ -170,9 +179,21 @@ body::-webkit-scrollbar {
     cursor: pointer;
     padding: 2px 5px;
     border-radius: 4px;
+    text-align: center;
 }
 
 .entry-delete:hover {
     color: #e93434;
     background: #1f0000;
+}
+
+/* click-to-confirm states, data-step is set by history.js */
+.entry-delete[data-step="1"] {
+    color: #e2b100;
+    background: #2a2000;
+}
+
+.entry-delete[data-step="2"] {
+    color: #f2f0ed;
+    background: #e93434;
 }

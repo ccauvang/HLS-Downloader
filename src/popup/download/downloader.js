@@ -9,6 +9,18 @@ import { loadFFmpeg, resetFfmpeg } from '../ffmpeg/engine.js';
 import { downloadVideoSegments, downloadAudioSegments, verifySegments } from './segments.js';
 import { mergeFmp4Fragments, writeConcatLists, remux, readAndCleanupOutput } from './mux.js';
 
+// built at save time, so total time includes remux + write to disk.
+// stored as one string (like infoFile) — history.js is a classic script and can't import format.js
+function buildStats(dlStart, avgSpeed) {
+    const parts = [
+        `⏱ ${formatDuration(Math.ceil((performance.now() - dlStart) / 1000))}`,
+        `↓ ${formatBytes(avgSpeed)}/s`,
+    ];
+    // totalDuration is only set by parseStream — skip when 0 (pasted links, never parsed)
+    if (state.totalDuration > 0) parts.push(`🎞 ${formatDuration(Math.ceil(state.totalDuration))}`);
+    return parts.join(' | ');
+}
+
 export async function runDownload() {
     let _fsWriteChain = Promise.resolve(); // serializes audio writeFile calls onto ffmpeg's FS — ffmpeg.wasm isn't safe for concurrent writeFile from parallel workers
     const CONCURRENCY = state.CONCURRENCY_SETTING;
@@ -126,7 +138,8 @@ export async function runDownload() {
                 filename: fileHandle.name,
                 infoFile: `${formatBytes(totalBytes)} | ${state.dlFormat.toUpperCase()} | ${links.length} segs`,
                 siteUrl: state.tab.url,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                dlStats: buildStats(dlStart, avgSpeed)
             });
             saveState();
         } else {
@@ -150,7 +163,8 @@ export async function runDownload() {
                 filename: fileHandle.name,
                 infoFile: `${formatBytes(outData.byteLength ?? outData.length)} | ${state.dlFormat.toUpperCase()} | ${links.length} segs`,
                 siteUrl: state.tab.url,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                dlStats: buildStats(dlStart, avgSpeed)
             });
             saveState();
         }
