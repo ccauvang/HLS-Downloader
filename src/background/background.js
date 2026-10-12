@@ -229,15 +229,26 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     }
 });
 
-chrome.action.onClicked.addListener((tab) => {
-    // separate popup window instead of the default browserAction popup — lets the UI stay open
-    // and keep downloading while the user switches tabs/windows
-    chrome.windows.create({
-        url: chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`,
-        type: 'popup',
-        width: 600,
-        height: 900
-    });
+const openingPopup = new Set(); // guards a fast double-click, since getAll is async
+
+chrome.action.onClicked.addListener(async (tab) => {
+    if (openingPopup.has(tab.id)) return;
+    openingPopup.add(tab.id);
+    try {
+        const popupUrl = chrome.runtime.getURL('src/popup/popup.html') + `?tabId=${tab.id}`;
+        const wins = await chrome.windows.getAll({ populate: true });
+        const existing = wins.find(w => w.tabs?.some(t => t.url === popupUrl || t.pendingUrl === popupUrl));
+        if (existing) {
+            await chrome.windows.update(existing.id, {
+                focused: true,
+                ...(existing.state === 'minimized' && { state: 'normal' })
+            });
+            return;
+        }
+        await chrome.windows.create({ url: popupUrl, type: 'popup', width: 600, height: 900 });
+    } finally {
+        openingPopup.delete(tab.id);
+    }
 });
 
 chrome.tabs.onRemoved.addListener(tabId => deleteTabUrls(tabId));
