@@ -83,9 +83,9 @@ import { runDownload } from './download/downloader.js';
     const { filename: defaultFilename, concurrency: CONCURRENCY_SETTING, format: defaultFormat, chunkDelay, chunkDelayEnabled } = await new Promise(r =>
         chrome.storage.sync.get({ filename: 'video', concurrency: 5, format: 'mp4', chunkDelay: 300, chunkDelayEnabled: true }, r)
     );
-    state.CONCURRENCY_SETTING = CONCURRENCY_SETTING;
+    state.CONCURRENCY_SETTING = Math.min(9, Math.max(3, parseInt(CONCURRENCY_SETTING, 10) || 5));
     state.defaultFilename = defaultFilename;
-    state.chunkDelay = chunkDelay;
+    state.chunkDelay = Math.min(10000, Math.max(0, parseInt(chunkDelay, 10) || 0));
     state.chunkDelayEnabled = chunkDelayEnabled;
 
     // first-log line can be missing if the user cleared the log without the id-preserving
@@ -97,13 +97,13 @@ import { runDownload } from './download/downloader.js';
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type !== 'SETTINGS_UPDATED') return;
         const { concurrency, format } = msg.changes;
-        if (concurrency) state.CONCURRENCY_SETTING = concurrency.newValue;
+        if (concurrency) state.CONCURRENCY_SETTING = Math.min(9, Math.max(3, parseInt(concurrency.newValue, 10) || 5));
         if (format && !dom.startBtn.disabled) {
-            state.dlFormat = format.newValue;
+            state.dlFormat = format.newValue === 'ts' ? 'ts' : 'mp4';
             dom.btnMp4.className = state.dlFormat === 'mp4' ? 'fmt-active' : 'fmt-inactive';
             dom.btnTs.className = state.dlFormat === 'ts' ? 'fmt-active' : 'fmt-inactive';
         }
-        if (msg.changes.chunkDelay) state.chunkDelay = msg.changes.chunkDelay.newValue;
+        if (msg.changes.chunkDelay) state.chunkDelay = Math.min(10000, Math.max(0, parseInt(msg.changes.chunkDelay.newValue, 10) || 0));
         if (msg.changes.chunkDelayEnabled) state.chunkDelayEnabled = msg.changes.chunkDelayEnabled.newValue;
         if (msg.changes.filename) state.defaultFilename = msg.changes.filename.newValue;
 

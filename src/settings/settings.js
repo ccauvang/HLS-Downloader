@@ -86,10 +86,10 @@ function renderBlacklist(hosts) {
     hosts.forEach(host => {
         const div = document.createElement('div');
         div.className = 'bl-entry';
-        div.innerHTML = `
-            <span class="bl-host" title="${host}">${host}</span>
-            <button class="bl-delete" data-host="${host}" title="Remove">✕</button>
-        `;
+        div.innerHTML = `<span class="bl-host"></span><button class="bl-delete" title="Remove">✕</button>`;
+        const hostEl = div.querySelector('.bl-host');
+        hostEl.textContent = host;
+        hostEl.title = host;
         div.querySelector('.bl-delete').addEventListener('click', async () => {
             const { blacklist = [] } = await chrome.storage.sync.get({ blacklist: [] });
             const next = blacklist.filter(h => h !== host);
@@ -129,6 +129,27 @@ async function addBlacklistHost() {
     input.value = '';
     document.getElementById('bl-add-btn').disabled = true;
     renderBlacklist(blacklist.slice().sort());
+}
+
+// validate the data from import of user before actualy storage it.
+function validateImport(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('not an object');
+    const clean = {};
+    if (typeof data.filename === 'string' && data.filename.trim())
+        clean.filename = data.filename.trim().replace(/[\\/:*?"<>|]/g, '_').slice(0, 100);
+    if (Number.isInteger(data.concurrency))
+        clean.concurrency = Math.min(9, Math.max(3, data.concurrency)); // match UI buttons
+    if (data.format === 'mp4' || data.format === 'ts') clean.format = data.format;
+    if (typeof data.saveHistory === 'boolean') clean.saveHistory = data.saveHistory;
+    if (Number.isInteger(data.chunkDelay))
+        clean.chunkDelay = Math.min(10000, Math.max(0, parseInt(e.target.value) || 0));
+    if (typeof data.chunkDelayEnabled === 'boolean') clean.chunkDelayEnabled = data.chunkDelayEnabled;
+    if (Array.isArray(data.blacklist))
+        clean.blacklist = [...new Set(
+            data.blacklist.filter(h => typeof h === 'string').map(normalizeHost).filter(Boolean)
+        )];
+    if (!Object.keys(clean).length) throw new Error('no valid settings found');
+    return clean;
 }
 
 function initSettings() {
@@ -244,15 +265,7 @@ function initSettings() {
         const file = e.target.files[0];
         if (!file) return;
         try {
-            const data = JSON.parse(await file.text());
-            const allowed = ['filename', 'concurrency', 'format', 'saveHistory', 'chunkDelay', 'chunkDelayEnabled', 'blacklist'];
-            const clean = {};
-            for (const k of allowed) if (k in data) clean[k] = data[k];
-            if ('blacklist' in clean) {
-                clean.blacklist = Array.isArray(clean.blacklist)
-                    ? clean.blacklist.filter(h => typeof h === 'string')
-                    : [];
-            }
+            const clean = validateImport(JSON.parse(await file.text()));
             await chrome.storage.sync.set(clean);
             loadAndRepaint(); // repaint form values only — does NOT re-run this wiring block,
             // so listeners don't stack (see loadAndRepaint's own comment)
