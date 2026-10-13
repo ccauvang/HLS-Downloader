@@ -90,7 +90,27 @@ function renderBlacklist(hosts) {
         const hostEl = div.querySelector('.bl-host');
         hostEl.textContent = host;
         hostEl.title = host;
-        div.querySelector('.bl-delete').addEventListener('click', async () => {
+
+        const delBtn = div.querySelector('.bl-delete');
+        let delStep = 0; // per-entry closure, renderBlacklist rebuilds entries so each starts at 0
+        let delTimer;
+
+        delBtn.addEventListener('click', async () => {
+            // 3 clicks: ✕ then 1 then 2 then delete. each click re-arms the 3s reset
+            if (delStep < 2) {
+                delStep++;
+                delBtn.textContent = String(delStep);
+                delBtn.dataset.step = String(delStep);
+                clearTimeout(delTimer);
+                delTimer = setTimeout(() => {
+                    delStep = 0;
+                    delBtn.textContent = '✕';
+                    delBtn.dataset.step = '';
+                }, 3000);
+                return;
+            }
+            clearTimeout(delTimer);
+            delBtn.disabled = true;
             const { blacklist = [] } = await chrome.storage.sync.get({ blacklist: [] });
             const next = blacklist.filter(h => h !== host);
             await chrome.storage.sync.set({ blacklist: next });
@@ -104,7 +124,7 @@ function normalizeHost(raw) {
     let host = raw.trim().toLowerCase();
     if (!host) return '';
     try { if (host.includes('://')) host = new URL(host).hostname; } catch (e) { /* not a full url, keep as-is */ }
-    return host.replace(/\/.*$/, ''); // strip trailing path if pasted bare host+path
+    return host.replace(/\/.*$/, '').replace(/:\d+$/, ''); // strip path, then port
 }
 
 async function openBlacklistModal() {
@@ -142,7 +162,7 @@ function validateImport(data) {
     if (data.format === 'mp4' || data.format === 'ts') clean.format = data.format;
     if (typeof data.saveHistory === 'boolean') clean.saveHistory = data.saveHistory;
     if (Number.isInteger(data.chunkDelay))
-        clean.chunkDelay = Math.min(10000, Math.max(0, parseInt(e.target.value) || 0));
+        clean.chunkDelay = Math.min(10000, Math.max(0, data.chunkDelay));
     if (typeof data.chunkDelayEnabled === 'boolean') clean.chunkDelayEnabled = data.chunkDelayEnabled;
     if (Array.isArray(data.blacklist))
         clean.blacklist = [...new Set(

@@ -106,6 +106,7 @@ import { runDownload } from './download/downloader.js';
         if (msg.changes.chunkDelay) state.chunkDelay = Math.min(10000, Math.max(0, parseInt(msg.changes.chunkDelay.newValue, 10) || 0));
         if (msg.changes.chunkDelayEnabled) state.chunkDelayEnabled = msg.changes.chunkDelayEnabled.newValue;
         if (msg.changes.filename) state.defaultFilename = msg.changes.filename.newValue;
+        if (msg.changes.blacklist) syncSite();
 
         const firstLogEl = document.getElementById('first-log');
         if (firstLogEl) firstLogEl.textContent =
