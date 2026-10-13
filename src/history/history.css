@@ -2,7 +2,7 @@
    popup.css already owns the font import, * reset, html/body, #header and #body,
    so none of that is repeated here. */
 
-/* hides the popup's own scrollbar once this stylesheet is preloaded — intentional */
+/* hides the popup's own scrollbar once this stylesheet is preloaded - intentional */
 body::-webkit-scrollbar {
     display: none;
 }
@@ -11,7 +11,7 @@ body::-webkit-scrollbar {
     font-size: 16px;
     color: #ffffff;
     font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 /* wrapper travels with the injected innerHTML, so the gap actually applies in the popup */
@@ -32,21 +32,21 @@ body::-webkit-scrollbar {
     left: 11px;
     top: 50%;
     transform: translateY(-50%);
-    color: #666;
+    color: var(--dim);
     pointer-events: none;
     transition: color .15s;
 }
 
 #search-wrap:focus-within #search-icon {
-    color: #e93434;
+    color: var(--accent-text);
 }
 
 #search {
     width: 100%;
-    background: #141414;
-    border: 1px solid #424141;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 7px;
-    color: #ccc;
+    color: var(--text-soft);
     font-size: 12px;
     padding: 9px 10px 9px 34px;
     /* left room for icon */
@@ -55,7 +55,7 @@ body::-webkit-scrollbar {
 }
 
 #search:focus {
-    border-color: #e93434;
+    border-color: var(--accent-text);
 }
 
 /* ── Count + Clear All row ──────────────────────────────── */
@@ -67,14 +67,14 @@ body::-webkit-scrollbar {
 
 #count {
     font-size: 13px;
-    color: #51f45e;
+    color: var(--ok-text);
 }
 
 #clear-all-btn {
     background: transparent;
-    border: 1px solid #5a1a1a;
+    border: 1px solid var(--danger-border);
     border-radius: 6px;
-    color: #c05050;
+    color: var(--danger-soft);
     font-size: 11px;
     padding: 5px 10px;
     cursor: pointer;
@@ -82,16 +82,16 @@ body::-webkit-scrollbar {
 }
 
 #clear-all-btn:hover {
-    border-color: #e93434;
-    color: #e93434;
-    background: #1f0000;
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-dark);
 }
 
-/* history.js sets data-confirm="yes" on first click — styles the "click again" state */
+/* history.js sets data-confirm="yes" on first click - styles the "click again" state */
 #clear-all-btn[data-confirm="yes"] {
-    background: #e93434;
-    border-color: #e93434;
-    color: #f2f0ed;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--on-fill);
 }
 
 /* ── List + cards ───────────────────────────────────────── */
@@ -103,15 +103,15 @@ body::-webkit-scrollbar {
 
 #empty {
     font-size: 13px;
-    color: #444;
+    color: var(--dim);
     text-align: center;
     padding: 40px 0;
     display: none;
 }
 
 .entry {
-    background: #141414;
-    border: 1px solid #252525;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px 14px;
     display: flex;
@@ -121,14 +121,14 @@ body::-webkit-scrollbar {
 }
 
 .entry:hover {
-    border-color: #333;
+    border-color: var(--border-hover);
 }
 
 .entry-filename {
     font-size: 13px;
     font-weight: 700;
-    color: #e0e0e0;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    font-family: var(--font-mono);
     padding-right: 24px;
     /* keeps long names clear of the delete button */
     white-space: nowrap;
@@ -138,19 +138,19 @@ body::-webkit-scrollbar {
 
 .entry-info {
     font-size: 11px;
-    color: #3DAD66;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--ok);
+    font-family: var(--font-mono);
 }
 
 .entry-stats {
     font-size: 11px;
-    color: #5fb3c9;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--info);
+    font-family: var(--font-mono);
 }
 
 .entry-url {
     font-size: 11px;
-    color: #3191f8;
+    color: var(--accent-text);
     text-decoration: none;
     white-space: nowrap;
     overflow: hidden;
@@ -164,7 +164,7 @@ body::-webkit-scrollbar {
 
 .entry-time {
     font-size: 10px;
-    color: #444;
+    color: var(--dim);
 }
 
 .entry-delete {
@@ -174,7 +174,7 @@ body::-webkit-scrollbar {
     min-width: 24px;
     background: transparent;
     border: none;
-    color: #444;
+    color: var(--dim);
     font-size: 14px;
     cursor: pointer;
     padding: 2px 5px;
@@ -183,17 +183,17 @@ body::-webkit-scrollbar {
 }
 
 .entry-delete:hover {
-    color: #e93434;
-    background: #1f0000;
+    color: var(--danger);
+    background: var(--danger-dark);
 }
 
 /* click-to-confirm states, data-step is set by history.js */
 .entry-delete[data-step="1"] {
-    color: #e2b100;
-    background: #2a2000;
+    color: var(--warn);
+    background: var(--warn-dark);
 }
 
 .entry-delete[data-step="2"] {
-    color: #f2f0ed;
-    background: #e93434;
+    color: var(--on-fill);
+    background: var(--danger);
 }

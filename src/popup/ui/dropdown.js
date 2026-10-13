@@ -7,6 +7,7 @@ export function updateDropdown() {
 
     if (!state.detectedM3u8.length) {
         dom.m3u8Selected.textContent = '— no streams detected yet —';
+        dom.m3u8SelectEl.classList.remove('open');
         state.m3u8Value = '';
         return;
     }
@@ -39,6 +40,7 @@ export function updateDropdown() {
 
 export function wireDropdown() {
     dom.m3u8SelectEl.addEventListener('click', () => {
+        if (!state.detectedM3u8.length) return;
         dom.m3u8SelectEl.classList.toggle('open');
     });
     // close on any outside click — custom select has no native blur/focus-out to hook into

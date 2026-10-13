@@ -1,5 +1,53 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap');
 
+/* Shared base for the popup, History and Settings views.
+   history.css and settings.css are injected into this same document (see views.js),
+   so they rely on everything defined here: vars, reset, body, #body, .row, text inputs,
+   scrollbars, .fmt-* / .bleximport-buttnon buttons and the disabled states. */
+
+/* ── Palette ───────────────────────────────────────────── */
+:root {
+    --bg: #14141C;
+    --surface: #1C1C26;
+    --surface-2: #252533;
+    --log-bg: #0E0E15;
+    --border: #2E2E3C;
+    --border-hover: #40405A;
+
+    --header: #1E1A33;
+    --accent: #7C3AED;
+    --accent-text: #A78BFA;
+    --accent-dark: #2A2150;
+
+    --text: #E6E6EF;
+    --text-soft: #C9C9D6;
+    --muted: #8A8AA0;
+    --dim: #6B6B82;
+    --on-fill: #F2F0ED;
+
+    --ok: #3DAD66;
+    --ok-text: #4ADE80;
+    --ok-dark: #003E1C;
+
+    --danger: #EF4444;
+    --danger-dark: #3A1418;
+    --danger-border: #6B2430;
+    --danger-soft: #D26A6A;
+
+    --warn: #F59E0B;
+    --warn-dark: #2B2008;
+    --warn-border: #8A5A0B;
+
+    --info: #67E8F9;
+    --fire: #FF8800;
+
+    --disabled-bg: #20202A;
+    --disabled-text: #55556A;
+
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* ── Reset + base ──────────────────────────────────────── */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -10,72 +58,48 @@ html,
 body {
     width: 100%;
     min-height: 700px;
-    background: #1A1D1E;
-    color: #e0e0e0;
+    background: var(--bg);
+    color: var(--text);
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
 
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 3px;
+}
+
+#links::-webkit-scrollbar-corner {
+    background: var(--surface);
+}
+
+/* ── Header ────────────────────────────────────────────── */
 #header {
     display: flex;
     align-items: center;
+    gap: 10px;
     padding: 11px 14px;
-    background: #3d0000;
-    border-bottom: 1px solid #222;
+    background: var(--header);
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
     overflow: hidden;
-}
-
-#site-bar {
-    display: flex;
-    gap: 6px;
-    background: #1A1D1E;
-}
-
-#site-url-label {
-    flex: 1;
-    background: #141414;
-    border: 1px solid #424141;
-    border-radius: 7px;
-    font-size: 13px;
-    padding: 7px 10px;
-    color: #d7d7d7;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#blacklist-btn {
-    width: 125px;
-    background: transparent;
-    border: 1px solid #967500;
-    border-radius: 5px;
-    color: #e2b100;
-    font-size: 11px;
-    padding: 8px 8px;
-    cursor: pointer;
-    flex-shrink: 0;
-    white-space: nowrap;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-weight: 600;
-}
-
-#blacklist-btn.active {
-    background: #d7a900;
-    color: #f2f0ed;
-}
-
-#body {
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
 }
 
 #header-title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: bold;
-    color: #e93434;
+    color: var(--accent-text);
     letter-spacing: 1px;
 }
 
@@ -88,27 +112,32 @@ body {
 #home-btn,
 #settings-btn,
 #history-btn {
-    background: #5a0000;
-    border: 1px solid #e93434;
-    border-radius: 5px;
-    color: #f2f0ed;
-    font-size: 15px;
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--accent-dark);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    color: var(--on-fill);
+    font-size: 15px;
 }
 
 #home-btn.active,
 #settings-btn.active,
-#history-btn.active,
-#home-btn.active:hover,
-#settings-btn.active:hover,
-#history-btn.active:hover {
-    background: #e93434;
-    color: #f2f0ed;
+#history-btn.active {
+    background: var(--accent);
+}
+
+/* ── Layout ────────────────────────────────────────────── */
+/* settings.css used to redefine this block and won the cascade, so these are
+   the values that were actually rendering */
+#body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .row {
@@ -117,47 +146,113 @@ body {
     height: 35px;
 }
 
+/* ── Site bar ──────────────────────────────────────────── */
+#site-bar {
+    display: flex;
+    gap: 6px;
+    background: var(--bg);
+}
+
+#site-url-label {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-size: 13px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#blacklist-btn {
+    width: 125px;
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--warn-border);
+    border-radius: 5px;
+    color: var(--warn);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    padding: 8px;
+    white-space: nowrap;
+}
+
+#blacklist-btn.active {
+    background: var(--warn);
+    color: var(--bg);
+}
+
+/* ── Text inputs ───────────────────────────────────────── */
+/* base for every text field in all three views, ids below only override size/layout */
+input[type="text"],
+input[type="number"],
+textarea {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text-soft);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 10px;
+    outline: none;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+    border-color: var(--accent-text);
+}
+
 #m3u8-url,
 #filename {
     flex: 1;
-    background: #141414;
-    border: 1px solid #424141;
-    border-radius: 7px;
-    color: #ccc;
+    width: 100%;
     font-size: 11.5px;
     padding: 7px 10px;
-    outline: none;
-    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-    width: 100%;
 }
 
-#m3u8-url:focus,
-#filename:focus {
-    border-color: #e93434;
-}
-
-#m3u8-url:disabled,
-.fmt-active:disabled,
-.fmt-inactive:disabled {
+#m3u8-url:disabled {
     opacity: .45;
     cursor: not-allowed;
 }
 
+textarea {
+    width: 100%;
+    height: 150px;
+    padding: 7px;
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    resize: vertical;
+}
+
+#detected-label {
+    font-size: 15px;
+    color: var(--accent-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Custom select ─────────────────────────────────────── */
 .custom-select {
     flex: 1;
     min-width: 0;
     position: relative;
-    background: #141414;
-    border: 1px solid #424141;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 7px;
-    color: #ccc;
+    color: var(--text-soft);
     font-size: 11.5px;
     cursor: pointer;
     user-select: none;
 }
 
 .custom-select.open {
-    border-color: #e93434;
+    border-color: var(--accent-text);
     border-radius: 7px 7px 0 0;
 }
 
@@ -167,20 +262,20 @@ body {
 }
 
 #m3u8-selected {
+    display: flex;
+    align-items: center;
+    height: 35px;
     padding: 7px 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    height: 35px;
-    display: flex;
-    align-items: center;
 }
 
 #m3u8-selected::after {
     content: '▾';
     margin-left: auto;
     padding-left: 6px;
-    color: #555;
+    color: var(--dim);
     flex-shrink: 0;
 }
 
@@ -190,13 +285,13 @@ body {
     top: 100%;
     left: -1px;
     right: -1px;
-    background: #141414;
-    border: 1px solid #e93434;
-    border-top: none;
-    border-radius: 0 0 7px 7px;
     z-index: 999;
     max-height: 200px;
     overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--accent-text);
+    border-top: none;
+    border-radius: 0 0 7px 7px;
 }
 
 .custom-select.open .custom-options {
@@ -206,12 +301,12 @@ body {
 .custom-option {
     padding: 8px 10px;
     font-size: 11.5px;
-    color: #ccc;
+    color: var(--text-soft);
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    border-bottom: 1px solid #1e1e1e;
+    border-bottom: 1px solid var(--bg);
 }
 
 .custom-option:last-child {
@@ -219,93 +314,91 @@ body {
 }
 
 .custom-option:hover {
-    background: #1f1f1f;
-    color: #e93434;
+    background: var(--surface-2);
+    color: var(--accent-text);
 }
 
 .custom-option.selected {
-    color: #e93434;
-    background: #1a0000;
+    background: var(--accent-dark);
+    color: var(--accent-text);
 }
 
-.custom-options::-webkit-scrollbar {
-    width: 4px;
-}
-
-.custom-options::-webkit-scrollbar-thumb {
-    background: #e93434;
-    border-radius: 2px;
-}
-
-textarea {
-    width: 100%;
-    height: 150px;
-    background: #141414;
-    border: 1px solid #252525;
-    border-radius: 7px;
-    color: #ccc;
-    font-size: 10.5px;
+/* ── Buttons: format toggles + backup buttons ──────────── */
+/* .bleximport-buttnon is the class name settings.html uses for Edit Blacklist / Export / Import / Add */
+.fmt-active,
+.fmt-inactive,
+.bleximport-buttnon {
+    flex: 1;
     padding: 7px;
-    resize: vertical;
-    outline: none;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-}
-
-textarea:focus {
-    border-color: #e93434;
-}
-
-#links::-webkit-scrollbar {
-    width: 8px;
-}
-
-#links::-webkit-scrollbar-thumb {
-    background: #e93434;
-    border-radius: 2px;
-    cursor: default;
-}
-
-#links::-webkit-scrollbar-corner {
-    background: #2cff76;
-}
-
-
-#detected-label {
-    font-size: 15px;
-    color: #3191f8;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    color: var(--on-fill);
+    font-weight: bold;
 }
 
 .fmt-active {
-    flex: 1;
-    padding: 5px;
-    border-radius: 6px;
-    border: 1px solid #3191f8;
-    background: #3191f8;
-    color: #f2f0ed;
-    font-weight: bold;
-    cursor: pointer;
+    background: var(--accent);
 }
 
-.fmt-inactive {
-    flex: 1;
-    padding: 5px;
-    border-radius: 6px;
-    border: 1px solid #3191f8;
-    background: #191c1e;
-    color: #f2f0ed;
-    font-weight: bold;
-    cursor: pointer;
+.fmt-inactive,
+.bleximport-buttnon {
+    background: var(--surface-2);
 }
 
-#reload-btn {
-    background: #3d0000;
-    color: #e93434;
-    cursor: pointer;
-    border: 1px solid #e93434;
+.bleximport-buttnon:hover:not(:disabled) {
+    background: var(--accent);
+}
+
+.fmt-active:disabled,
+.fmt-inactive:disabled {
+    opacity: .45;
+}
+
+/* ── Buttons: action variants ──────────────────────────── */
+/* green: parse, start, save settings */
+#parse-btn,
+#start-btn,
+#save-btn {
+    background: var(--ok-dark);
+    border: 1px solid var(--ok);
+    color: var(--ok);
+}
+
+#parse-btn:hover:not(:disabled),
+#start-btn:hover:not(:disabled),
+#save-btn:hover:not(:disabled) {
+    background: var(--ok);
+    color: var(--on-fill);
+}
+
+#parse-btn {
+    width: 40px;
+    padding: 4px;
     border-radius: 5px;
+    font-weight: 600;
+}
+
+#start-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 0 0 3px;
+    border-radius: 7px;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* accent: reload page */
+#reload-btn {
+    background: var(--accent-dark);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    color: var(--accent-text);
     padding: 4px 8px;
     font-size: 12px;
     font-weight: 600;
@@ -314,87 +407,35 @@ textarea:focus {
     text-overflow: ellipsis;
 }
 
-#reload-btn:hover {
-    background: #e93434;
-    color: #f2f0ed;
+#reload-btn:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--on-fill);
 }
 
-#reload-btn:disabled {
-    background: #252525;
-    color: #4B4B4B;
-    border: 1px solid #434343;
-    cursor: not-allowed;
-}
-
-#parse-btn {
-    background: #003e1c;
-    color: #3DAD66;
-    cursor: pointer;
-    border: 1px solid #3DAD66;
-    border-radius: 5px;
-    padding: 4px;
-    width: 40px;
-    font-weight: 600;
-}
-
-#parse-btn:hover {
-    background: #3DAD66;
-    color: #f2f0ed;
-}
-
-#parse-btn:disabled {
-    background: #252525;
-    color: #4B4B4B;
-    border: 1px solid #434343;
-    cursor: not-allowed;
-}
-
-#start-btn {
-    flex: 1;
-    padding: 9px;
-    background: #003e1c;
-    color: #3DAD66;
-    border: 1px solid #3DAD66;
-    border-radius: 7px;
-    font-weight: 800;
-    font-size: 15px;
-    cursor: pointer;
-    letter-spacing: 3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#start-btn:hover {
-    background: #3DAD66;
-    color: #f2f0ed;
-}
-
-#start-btn:disabled {
-    background: #252525;
-    color: #4B4B4B;
-    border: 1px solid #434343;
-    cursor: not-allowed;
-}
-
+/* danger: cancel download */
 #cancel-btn {
     padding: 9px 12px;
-    background: #3d0000;
-    color: #e93434;
-    border: 1px solid #e93434;
+    background: var(--danger-dark);
+    border: 1px solid var(--danger);
     border-radius: 7px;
-    font-weight: 800;
+    color: var(--danger);
     font-size: 13px;
-    cursor: pointer;
+    font-weight: 800;
 }
 
-#cancel-btn:disabled {
-    background: #252525;
-    color: #4B4B4B;
-    border: 1px solid #434343;
-    cursor: not-allowed;
+/* one disabled look for every action button, hover rules above skip disabled ones */
+#reload-btn:disabled,
+#parse-btn:disabled,
+#start-btn:disabled,
+#cancel-btn:disabled,
+#save-btn:disabled,
+.bleximport-buttnon:disabled {
+    background: var(--disabled-bg);
+    border: 1px solid var(--border);
+    color: var(--disabled-text);
 }
 
+/* ── Progress ──────────────────────────────────────────── */
 #bar-wrap-container {
     display: flex;
     align-items: center;
@@ -403,58 +444,54 @@ textarea:focus {
 
 #bar-wrap {
     flex: 1;
-    background: #181818;
-    border-radius: 5px;
     height: 10px;
+    background: var(--surface);
+    border: 1px solid var(--ok-dark);
+    border-radius: 5px;
     overflow: hidden;
-    border: 1px solid #003e1c;
-}
-
-#bar-percent {
-    font-size: 13px;
-    color: #f2f0ed;
-    min-width: 30px;
-    text-align: right;
 }
 
 #bar {
     height: 100%;
     width: 0%;
-    background: #3DAD66;
-    transition: width .25s ease;
+    background: var(--ok);
     border-radius: 5px;
+    transition: width .25s ease;
+}
+
+#bar-percent {
+    min-width: 30px;
+    font-size: 13px;
+    color: var(--text);
+    text-align: right;
 }
 
 #bar-eta {
-    font-size: 11px;
-    color: #888;
     min-width: 130px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono);
     text-align: right;
-    font-family: 'JetBrains Mono', monospace;
 }
 
+/* ── Log ───────────────────────────────────────────────── */
 #log {
-    background: #090909;
-    border: 1px solid #1c1c1c;
-    border-radius: 7px;
-    padding: 7px 8px;
     height: 170px;
+    padding: 7px 8px;
     overflow-y: auto;
+    background: var(--log-bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--muted);
     font-size: 13px;
-    color: #888;
+    font-family: var(--font-mono);
     line-height: 1.7;
     white-space: pre-wrap;
     word-break: break-all;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-}
-
-#log::-webkit-scrollbar {
-    width: 5px;
 }
 
 #log::-webkit-scrollbar-thumb {
-    background: #2a2a2a;
-    border-radius: 2px;
+    background: var(--border-hover);
 }
 
 #log span {
@@ -462,43 +499,42 @@ textarea:focus {
 }
 
 .ok {
-    color: #4caf50;
+    color: var(--ok-text);
 }
 
 .err {
-    color: #f44336;
+    color: var(--danger);
 }
 
 .inf {
-    color: #00e5ff;
+    color: var(--info);
 }
 
 .fire {
-    color: #FF8800;
+    color: var(--fire);
 }
 
 #clear-log-btn,
 #copy-log-btn {
     flex: 1;
     padding: 5px;
-    background: #191c1e;
-    border: 1px solid #2a2a2a;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #888;
+    color: var(--muted);
     font-size: 11px;
-    cursor: pointer;
-    font-family: 'Inter', sans-serif;
     font-weight: 700;
+    font-family: 'Inter', sans-serif;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 #clear-log-btn:hover {
-    border-color: #f44336;
-    color: #f44336;
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 #copy-log-btn:hover {
-    border-color: #3DAD66;
-    color: #3DAD66;
+    border-color: var(--ok);
+    color: var(--ok);
 }
