@@ -4,9 +4,6 @@
   "version": "2.0",
   "description": "Download HLS streams as MP4 or TS",
   "permissions": [
-    "downloads",
-    "scripting",
-    "activeTab",
     "storage",
     "tabs",
     "webRequest",
