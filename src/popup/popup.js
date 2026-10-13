@@ -221,7 +221,12 @@ import { runDownload } from './download/downloader.js';
     document.getElementById('clear-log-btn').addEventListener('click', () => {
         // id="first-log" must survive this rebuild — SETTINGS_UPDATED and the initial paint
         // both target that id directly, and losing it here is what caused the earlier crash
-        dom.logEl.innerHTML = `<span id="first-log" class="inf">Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0</span>`
+        dom.logEl.innerHTML = '';
+        const first = document.createElement('span');
+        first.id = 'first-log';
+        first.className = 'inf';
+        first.textContent = `Ready. Concurrency: ${state.CONCURRENCY_SETTING} | On: ${new URL(state.tab.url).hostname}\nTab ID: ${state.tab.id} | v2.0`;
+        dom.logEl.appendChild(first);
         saveState();
     });
 

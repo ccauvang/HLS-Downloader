@@ -47,24 +47,6 @@
       "world": "MAIN"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "matches": [
-        "*://*/*"
-      ],
-      "resources": [
-        "lib/ffmpeg.js",
-        "lib/ffmpeg-core.js",
-        "lib/ffmpeg-core.wasm",
-        "src/history/history.html",
-        "src/history/history.css",
-        "src/history/history.js",
-        "src/settings/settings.html",
-        "src/settings/settings.css",
-        "src/settings/settings.js"
-      ]
-    }
-  ],
   "icons": {
     "16": "assets/icon16.png",
     "48": "assets/icon48.png",

@@ -300,6 +300,14 @@ function initSettings() {
     });
 }
 
+// another popup saved settings: repaint unless this form has unsaved edits
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    if (!document.getElementById('chunk-delay-ms')) return; // settings view not open
+    if (JSON.stringify(currentValues()) !== JSON.stringify(initial)) return; // user mid-edit
+    loadAndRepaint();
+});
+
 window.hlsSettingsInit = initSettings;
 // no self-call here — views.js's script.onload already invokes hlsSettingsInit()
 // once the script finishes loading; calling it again here double-wired every

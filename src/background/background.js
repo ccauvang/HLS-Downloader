@@ -211,7 +211,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
         blacklistedHosts.clear();
         (changes.blacklist.newValue || []).forEach(h => blacklistedHosts.add(h));
     }
-    chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', changes });
+    chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', changes }).catch(() => { });
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {

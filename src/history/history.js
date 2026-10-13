@@ -36,13 +36,22 @@ function render(entries) {
 
         div.className = 'entry';
         div.innerHTML = `
-        <div class="entry-filename">${filename}</div>
-        <div class="entry-info">${infoFile}</div>
-        ${dlStats ? `<div class="entry-stats">${dlStats}</div>` : ''}
-        <a class="entry-url" href="${siteUrl}" target="_blank" title="${siteUrl}">${siteUrl}</a>
-        <div class="entry-time">${formatTimestamp(timestamp)}</div>
-        <button class="entry-delete" data-id="${id}" title="Delete">✕</button>
+            <div class="entry-filename"></div>
+            <div class="entry-info"></div>
+            <div class="entry-stats"></div>
+            <a class="entry-url" target="_blank" rel="noopener"></a>
+            <div class="entry-time"></div>
+            <button class="entry-delete" title="Delete">✕</button>
         `;
+        div.querySelector('.entry-filename').textContent = filename;
+        div.querySelector('.entry-info').textContent = infoFile;
+        const statsEl = div.querySelector('.entry-stats');
+        if (dlStats) statsEl.textContent = dlStats; else statsEl.remove();
+        const urlEl = div.querySelector('.entry-url');
+        urlEl.textContent = siteUrl;
+        urlEl.title = siteUrl;
+        if (/^https?:\/\//i.test(siteUrl)) urlEl.href = siteUrl; // no href for anything else
+        div.querySelector('.entry-time').textContent = formatTimestamp(timestamp);
 
         const delBtn = div.querySelector('.entry-delete');
         let delStep = 0; // per-card closure — render() rebuilds cards, so every new card starts at 0
